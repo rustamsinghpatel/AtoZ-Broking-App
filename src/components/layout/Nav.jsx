@@ -18,8 +18,8 @@ export const NAV_ITEMS = [
 
 export const Logo = () => (
   <div className="flex items-center gap-2">
-    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-600 text-sm font-bold text-white">A2Z</span>
-    <span className="text-lg font-semibold tracking-tight text-slate-900">A2Z <span className="text-green-600">Broking</span></span>
+    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-600 text-sm font-bold text-white">AtoZ</span>
+    <span className="text-lg font-semibold tracking-tight text-slate-900">AtoZ <span className="text-green-600">Broking</span></span>
   </div>
 )
 
