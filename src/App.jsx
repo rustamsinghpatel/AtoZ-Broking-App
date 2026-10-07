@@ -10,6 +10,7 @@ import Reports from './pages/Reports'
 import Notifications from './pages/Notifications'
 import Profile from './pages/Profile'
 import NotFound from './pages/NotFound'
+import Landing from './pages/Landing'
 
 function Protected({ children }) {
   const { isAuthenticated } = useAuth()
@@ -20,7 +21,7 @@ export default function App() {
   const { isAuthenticated } = useAuth()
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/" element={<Landing />} />
       <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} />
       <Route element={<Protected><DashboardLayout /></Protected>}>
         <Route path="/dashboard" element={<Dashboard />} />
