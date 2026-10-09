@@ -1,8 +1,6 @@
 
 import { useState } from "react";
-
 import { useNavigate } from "react-router-dom";
-
 import {
   ArrowUpRight,
   CheckCircle2,
@@ -14,16 +12,12 @@ import {
   TrendingUp,
   User,
 } from "lucide-react";
-
 import { Button, Input } from "../components/common";
-
 import { Logo } from "../components/layout/Nav";
-
 import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
   const { login } = useAuth();
-
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -33,19 +27,18 @@ export default function Login() {
   });
 
   const [errors, setErrors] = useState({});
-
   const [show, setShow] = useState(false);
-
   const [loading, setLoading] = useState(false);
 
-  const set = (k) => (e) =>
+  const set = (key) => (e) => {
     setForm({
       ...form,
-      [k]:
+      [key]:
         e.target.type === "checkbox"
           ? e.target.checked
           : e.target.value,
     });
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -58,64 +51,61 @@ export default function Login() {
     }
 
     if (!form.password) {
-      next.password =
-        "Please enter your password or PIN.";
+      next.password = "Please enter your password or PIN.";
     } else if (form.password.length < 4) {
-      next.password =
-        "Password must be at least 4 characters.";
+      next.password = "Password must be at least 4 characters.";
     }
 
     setErrors(next);
 
-    if (Object.keys(next).length) return;
+    if (Object.keys(next).length > 0) return;
 
     setLoading(true);
 
-    const res = await login(
-      form.clientId,
-      form.password,
-      form.remember
-    );
+    try {
+      const res = await login(
+        form.clientId.trim(),
+        form.password,
+        form.remember
+      );
 
-    setLoading(false);
+      if (res.ok) {
+        // Backend se aane wale actual role ke hisaab se redirect.
+        const role = res.user?.role;
 
-    if (res.ok) {
-      navigate("/dashboard", {
-        replace: true,
-      });
-    } else {
+        if (role === "admin") {
+          navigate("/admin", { replace: true });
+        } else {
+          navigate("/dashboard", { replace: true });
+        }
+      } else {
+        setErrors({
+          form: res.error || "Login failed. Please try again.",
+        });
+      }
+    } catch (error) {
       setErrors({
-        form: res.error,
+        form: "Unable to connect to the server. Please try again.",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      {/* =====================================================
-          LEFT SIDE - A2Z BROKING INTRO
-      ====================================================== */}
-
+      {/* LEFT SIDE — INTRO */}
       <div className="relative hidden overflow-hidden bg-gradient-to-br from-green-700 via-green-800 to-green-950 p-10 text-white lg:flex lg:flex-col lg:justify-between xl:p-12">
-        {/* Decorative circles */}
-
         <div className="absolute -right-24 -top-24 h-72 w-72 rounded-full bg-white/5" />
-
         <div className="absolute -bottom-32 -left-20 h-80 w-80 rounded-full bg-white/5" />
-
-        {/* Brand */}
 
         <div className="relative z-10 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-sm font-bold text-green-700 shadow-lg">
               A2Z
             </span>
-
             <div>
-              <p className="text-lg font-semibold">
-                A2Z Broking
-              </p>
-
+              <p className="text-lg font-semibold">A2Z Broking</p>
               <p className="text-xs text-green-200">
                 Client Investment Portal
               </p>
@@ -126,8 +116,6 @@ export default function Login() {
             Secure Portal
           </div>
         </div>
-
-        {/* Main content */}
 
         <div className="relative z-10 my-10">
           <p className="mb-3 text-sm font-medium text-green-200">
@@ -144,15 +132,12 @@ export default function Login() {
             account from one secure place.
           </p>
 
-          {/* Portfolio mini card */}
-
           <div className="mt-8 max-w-md rounded-2xl border border-white/10 bg-white/10 p-5 shadow-2xl backdrop-blur-sm">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-green-200">
                   Portfolio Value
                 </p>
-
                 <p className="mt-1 text-2xl font-semibold">
                   ₹9,21,500
                 </p>
@@ -169,66 +154,44 @@ export default function Login() {
                   <div
                     key={index}
                     className="flex-1 rounded-t-sm bg-white/50"
-                    style={{
-                      height: `${height}px`,
-                    }}
+                    style={{ height: `${height}px` }}
                   />
                 )
               )}
             </div>
 
             <div className="mt-4 flex items-center justify-between text-xs">
-              <span className="text-green-200">
-                Total Returns
-              </span>
-
-              <span className="font-semibold text-white">
-                +8.41%
-              </span>
+              <span className="text-green-200">Total Returns</span>
+              <span className="font-semibold text-white">+8.41%</span>
             </div>
           </div>
 
-          {/* Features */}
-
           <div className="mt-7 grid gap-3 sm:grid-cols-3">
             <div className="flex items-center gap-2 text-xs text-green-50">
-              <CheckCircle2
-                size={16}
-                className="shrink-0 text-green-200"
-              />
+              <CheckCircle2 size={16} className="shrink-0 text-green-200" />
               Portfolio tracking
             </div>
 
             <div className="flex items-center gap-2 text-xs text-green-50">
-              <CheckCircle2
-                size={16}
-                className="shrink-0 text-green-200"
-              />
+              <CheckCircle2 size={16} className="shrink-0 text-green-200" />
               Secure reports
             </div>
 
             <div className="flex items-center gap-2 text-xs text-green-50">
-              <CheckCircle2
-                size={16}
-                className="shrink-0 text-green-200"
-              />
+              <CheckCircle2 size={16} className="shrink-0 text-green-200" />
               Easy support
             </div>
           </div>
         </div>
 
-        {/* Bottom */}
-
         <div className="relative z-10 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-5">
           <div className="flex items-center gap-2 text-xs text-green-100">
             <ShieldCheck size={15} />
-
             Secure client access
           </div>
 
           <div className="flex items-center gap-2 text-xs text-green-200">
             <Headphones size={15} />
-
             Relationship support
           </div>
         </div>
@@ -239,23 +202,16 @@ export default function Login() {
         </p>
       </div>
 
-      {/* =====================================================
-          RIGHT SIDE - LOGIN FORM
-      ====================================================== */}
-
+      {/* RIGHT SIDE — LOGIN FORM */}
       <div className="flex items-center justify-center bg-white px-4 py-10 sm:px-6 lg:px-10">
         <div className="w-full max-w-md">
-          {/* Mobile Logo */}
-
           <div className="mb-8 lg:hidden">
             <Logo />
           </div>
 
-          {/* Heading */}
-
           <div>
             <p className="mb-2 text-sm font-medium text-green-700">
-              CLIENT LOGIN
+              SECURE LOGIN
             </p>
 
             <h1 className="text-2xl font-semibold text-slate-900 sm:text-3xl">
@@ -263,18 +219,12 @@ export default function Login() {
             </h1>
 
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              Sign in to your A2Z Broking client portal
-              to view and manage your investments.
+              Sign in to your A2Z Broking account to view and
+              manage your portal.
             </p>
           </div>
 
-          {/* Login Form */}
-
-          <form
-            onSubmit={submit}
-            noValidate
-            className="mt-8 space-y-4"
-          >
+          <form onSubmit={submit} noValidate className="mt-8 space-y-4">
             {errors.form && (
               <div
                 role="alert"
@@ -289,7 +239,7 @@ export default function Login() {
               label="Client ID / Mobile / Email"
               icon={User}
               autoComplete="username"
-              placeholder="e.g. A2Z10001"
+              placeholder="Enter your Client ID or email"
               value={form.clientId}
               onChange={set("clientId")}
               error={errors.clientId}
@@ -309,18 +259,10 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => setShow(!show)}
-                  aria-label={
-                    show
-                      ? "Hide password"
-                      : "Show password"
-                  }
+                  aria-label={show ? "Hide password" : "Show password"}
                   className="rounded p-1.5 text-slate-500 hover:text-slate-800"
                 >
-                  {show ? (
-                    <EyeOff size={16} />
-                  ) : (
-                    <Eye size={16} />
-                  )}
+                  {show ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               }
             />
@@ -333,7 +275,6 @@ export default function Login() {
                   onChange={set("remember")}
                   className="h-4 w-4 rounded border-slate-300 accent-green-600"
                 />
-
                 Remember me
               </label>
 
@@ -341,7 +282,7 @@ export default function Login() {
                 type="button"
                 onClick={() =>
                   setErrors({
-                    form: "Password reset is not available in this demo. Contact support.",
+                    form: "Password reset is not available yet. Contact support.",
                   })
                 }
                 className="font-medium text-green-700 hover:underline"
@@ -350,26 +291,14 @@ export default function Login() {
               </button>
             </div>
 
-            <Button
-              type="submit"
-              loading={loading}
-              className="w-full !py-3"
-            >
-              {loading
-                ? "Signing in…"
-                : "Login"}
+            <Button type="submit" loading={loading} className="w-full !py-3">
+              {loading ? "Signing in…" : "Login"}
             </Button>
           </form>
 
-          {/* Signup */}
-
           <div className="my-7 flex items-center gap-3">
             <div className="h-px flex-1 bg-slate-200" />
-
-            <span className="text-xs text-slate-400">
-              OR
-            </span>
-
+            <span className="text-xs text-slate-400">OR</span>
             <div className="h-px flex-1 bg-slate-200" />
           </div>
 
@@ -388,46 +317,12 @@ export default function Login() {
             </button>
           </div>
 
-          {/* Demo Credentials */}
-
-          <div className="mt-5 rounded-lg bg-slate-100 p-3 text-xs leading-5 text-slate-600">
-            <span className="font-semibold text-slate-700">
-              Demo credentials
-            </span>
-
-            <br />
-
-            Client ID:{" "}
-            <b className="text-slate-800">
-              A2Z10001
-            </b>
-
-            {" · "}
-
-            Password:{" "}
-            <b className="text-slate-800">
-              123456
-            </b>
-          </div>
-
-          {/* Support */}
-
           <p className="mt-6 text-center text-xs leading-5 text-slate-500">
-            Need help? Call{" "}
-            <b className="text-slate-700">
-              1800-000-0000
-            </b>
-
-            {" "}or email{" "}
-
-            <b className="text-slate-700">
-              support@a2zbroking.example
-            </b>
+            Need help? Contact A2Z Broking support.
           </p>
 
           <div className="mt-6 flex items-center justify-center gap-2 text-[11px] text-slate-400">
             <ShieldCheck size={13} />
-
             Your account information is protected.
           </div>
         </div>

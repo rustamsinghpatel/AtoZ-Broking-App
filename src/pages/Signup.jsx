@@ -124,7 +124,7 @@ export default function Signup() {
         {/* Header */}
         <div className="mb-8 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-green-700 text-sm font-bold text-white">
-            A2Z
+            ATOZ
           </div>
 
           <h1 className="mt-4 text-2xl font-semibold text-slate-900">
@@ -132,7 +132,7 @@ export default function Signup() {
           </h1>
 
           <p className="mt-1 text-sm text-slate-500">
-            Register for your A2Z Broking client portal.
+            Register for your ATOZ Broking client portal.
           </p>
         </div>
 

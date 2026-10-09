@@ -22,6 +22,8 @@ import Withdrawal from "./pages/Withdrawal";
 
 import NotFound from "./pages/NotFound";
 
+import Admin from "./pages/Admin";
+
 
 function Protected({ children }) {
   const { isAuthenticated } = useAuth();
@@ -150,6 +152,8 @@ export default function App() {
 
       </Route>
 
+      <Route path="/admin" element={<Admin />} />
+
 
       {/* =====================================================
           404
@@ -161,5 +165,6 @@ export default function App() {
       />
 
     </Routes>
+    
   );
 }
