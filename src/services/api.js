@@ -1,18 +1,17 @@
 
 // A2Z Broking API Service Layer
 
-// Mock data - these will remain temporary until their backend APIs are ready.
+// Mock data - these remain temporary until their backend APIs are ready.
 import { mockHoldings, mockPerformance } from "../data/mockPortfolio";
 import { mockTransactions, mockReports } from "../data/mockTransactions";
 import { mockNotifications } from "../data/mockNotifications";
-
 
 // ---------------------------------------------------------
 // Backend configuration
 // ---------------------------------------------------------
 
-const API_URL = "http://localhost:5000";
-
+// Live backend hosted on Render
+const API_URL = "https://atoz-broking-app.onrender.com";
 
 // ---------------------------------------------------------
 // Get saved JWT token
@@ -36,7 +35,6 @@ const getToken = () => {
   }
 };
 
-
 // ---------------------------------------------------------
 // Common API request helper
 // ---------------------------------------------------------
@@ -46,7 +44,6 @@ const apiRequest = async (endpoint, options = {}) => {
 
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
-
     headers: {
       "Content-Type": "application/json",
       ...(token
@@ -67,7 +64,6 @@ const apiRequest = async (endpoint, options = {}) => {
   return result;
 };
 
-
 // ---------------------------------------------------------
 // Utility delay for mock APIs
 // ---------------------------------------------------------
@@ -76,7 +72,6 @@ const delay = (data, ms = 600) =>
   new Promise((resolve) =>
     setTimeout(() => resolve(structuredClone(data)), ms)
   );
-
 
 // ---------------------------------------------------------
 // Portfolio helper
@@ -95,24 +90,18 @@ const enrich = (h) => {
   };
 };
 
-
 // =========================================================
 // REAL BACKEND API
 // =========================================================
 
 // GET /api/auth/me
-//
-// This is now connected to the real backend.
-// JWT token is automatically sent as:
-//
-// Authorization: Bearer <token>
+// Sends the saved JWT token in the Authorization header.
 
 export const getUser = async () => {
   const result = await apiRequest("/api/auth/me");
 
   return result.data.user;
 };
-
 
 // =========================================================
 // MOCK APIs - TEMPORARY
@@ -121,7 +110,6 @@ export const getUser = async () => {
 // GET /api/holdings
 export const getHoldings = () =>
   delay(mockHoldings.map(enrich));
-
 
 // GET /api/portfolio
 export const getPortfolio = () => {
@@ -168,19 +156,16 @@ export const getPortfolio = () => {
   });
 };
 
-
 // GET /api/transactions
 export const getTransactions = () =>
   delay(mockTransactions);
-
 
 // GET /api/reports
 export const getReports = () =>
   delay(mockReports, 300);
 
-
 // =========================================================
-// Notifications
+// Notifications - TEMPORARY MOCK DATA
 // =========================================================
 
 const READ_KEY = "a2z_read_notifications";
@@ -195,7 +180,6 @@ const readIds = () => {
   }
 };
 
-
 // GET /api/notifications
 export const getNotifications = () =>
   delay(
@@ -209,8 +193,8 @@ export const getNotifications = () =>
     300
   );
 
-
 // PATCH /api/notifications/read
+// Currently stores read notification IDs in browser storage.
 export const markNotificationsRead = (ids) => {
   localStorage.setItem(
     READ_KEY,
