@@ -1,7 +1,9 @@
+
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Lock, Mail, Phone, User } from "lucide-react";
 import { Button, Input } from "../components/common";
+import { apiRequest } from "../services/api";
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -20,10 +22,10 @@ export default function Signup() {
   const [loading, setLoading] = useState(false);
 
   const set = (key) => (e) => {
-    setForm({
-      ...form,
+    setForm((previous) => ({
+      ...previous,
       [key]: e.target.value,
-    });
+    }));
   };
 
   const submit = async (e) => {
@@ -31,13 +33,14 @@ export default function Signup() {
 
     const next = {};
 
-    // Validation
     if (!form.fullName.trim()) {
       next.fullName = "Please enter your full name.";
     }
 
     if (!form.email.trim()) {
       next.email = "Please enter your email.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      next.email = "Please enter a valid email address.";
     }
 
     if (!form.mobile.trim()) {
@@ -46,8 +49,8 @@ export default function Signup() {
 
     if (!form.password) {
       next.password = "Please enter a password.";
-    } else if (form.password.length < 4) {
-      next.password = "Password must be at least 4 characters.";
+    } else if (form.password.length < 6) {
+      next.password = "Password must be at least 6 characters.";
     }
 
     if (!form.confirmPassword) {
@@ -58,63 +61,48 @@ export default function Signup() {
 
     setErrors(next);
 
-    if (Object.keys(next).length) {
+    if (Object.keys(next).length > 0) {
       return;
     }
 
     setLoading(true);
 
     try {
-      const response = await fetch(
-        "http://localhost:5000/api/auth/register",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(form),
-        }
-      );
+      const result = await apiRequest("/api/auth/register", {
+        method: "POST",
+        body: JSON.stringify({
+          ...form,
+          fullName: form.fullName.trim(),
+          email: form.email.trim().toLowerCase(),
+          mobile: form.mobile.trim(),
+        }),
+      });
 
-      const result = await response.json();
-
-      // Check backend response in browser console
       console.log("REGISTER RESPONSE:", result);
 
-      if (!response.ok) {
-        setErrors({
-          form: result.message || "Registration failed.",
-        });
-
-        setLoading(false);
-        return;
-      }
-
-      setLoading(false);
-
-      // Safely get Client ID
-      const clientId = result?.data?.user?.clientId;
+      const clientId =
+        result?.data?.clientId || result?.data?.user?.clientId;
 
       if (clientId) {
-        alert(
-          `Account created successfully!\n\nYour Client ID is: ${clientId}`
+        window.alert(
+          `Account created successfully!\n\nYour Client ID is: ${clientId}\n\nYour account is pending admin approval.`
         );
       } else {
-        alert(
-          "Account created successfully!\n\nClient ID was not received from the server."
+        window.alert(
+          result?.message ||
+            "Registration successful. Your account may need admin approval."
         );
       }
 
-      // Go to login page
       navigate("/login", { replace: true });
     } catch (error) {
       console.error("Registration error:", error);
 
-      setLoading(false);
-
       setErrors({
-        form: "Unable to connect to server.",
+        form: error.message || "Unable to connect to server.",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -136,7 +124,7 @@ export default function Signup() {
           </p>
         </div>
 
-        {/* Server Error */}
+        {/* Server error */}
         {errors.form && (
           <div
             role="alert"
@@ -146,9 +134,8 @@ export default function Signup() {
           </div>
         )}
 
-        {/* Signup Form */}
+        {/* Signup form */}
         <form onSubmit={submit} noValidate className="space-y-4">
-          {/* Full Name */}
           <Input
             id="fullName"
             label="Full Name"
@@ -159,7 +146,6 @@ export default function Signup() {
             error={errors.fullName}
           />
 
-          {/* Email */}
           <Input
             id="email"
             label="Email"
@@ -171,7 +157,6 @@ export default function Signup() {
             error={errors.email}
           />
 
-          {/* Mobile */}
           <Input
             id="mobile"
             label="Mobile Number"
@@ -182,7 +167,6 @@ export default function Signup() {
             error={errors.mobile}
           />
 
-          {/* Password */}
           <Input
             id="password"
             label="Password"
@@ -195,19 +179,15 @@ export default function Signup() {
             right={
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
+                onClick={() => setShowPassword((value) => !value)}
                 className="rounded p-1.5 text-slate-500 hover:text-slate-800"
+                aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? (
-                  <EyeOff size={16} />
-                ) : (
-                  <Eye size={16} />
-                )}
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             }
           />
 
-          {/* Confirm Password */}
           <Input
             id="confirmPassword"
             label="Confirm Password"
@@ -220,10 +200,13 @@ export default function Signup() {
             right={
               <button
                 type="button"
-                onClick={() =>
-                  setShowConfirmPassword(!showConfirmPassword)
-                }
+                onClick={() => setShowConfirmPassword((value) => !value)}
                 className="rounded p-1.5 text-slate-500 hover:text-slate-800"
+                aria-label={
+                  showConfirmPassword
+                    ? "Hide confirm password"
+                    : "Show confirm password"
+                }
               >
                 {showConfirmPassword ? (
                   <EyeOff size={16} />
@@ -234,17 +217,12 @@ export default function Signup() {
             }
           />
 
-          {/* Submit */}
-          <Button
-            type="submit"
-            loading={loading}
-            className="w-full !py-3"
-          >
+          <Button type="submit" loading={loading} className="w-full !py-3">
             {loading ? "Creating account…" : "Create Account"}
           </Button>
         </form>
 
-        {/* Login Link */}
+        {/* Login link */}
         <p className="mt-6 text-center text-sm text-slate-500">
           Already have an account?{" "}
           <Link

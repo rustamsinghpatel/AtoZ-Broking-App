@@ -2,8 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-
-const API_BASE = "http://localhost:5000";
+import { apiRequest } from "../services/api";
 
 const menuItems = [
   "Overview",
@@ -13,24 +12,6 @@ const menuItems = [
   "Withdrawals",
   "Reports",
 ];
-
-function getSavedToken() {
-  const savedSession =
-    localStorage.getItem("a2z_session") ||
-    sessionStorage.getItem("a2z_session");
-
-  if (!savedSession) {
-    throw new Error("Login session nahi mila. Dobara login karein.");
-  }
-
-  const session = JSON.parse(savedSession);
-
-  if (!session?.token) {
-    throw new Error("Authentication token nahi mila. Dobara login karein.");
-  }
-
-  return session.token;
-}
 
 function StatusBadge({ status }) {
   const styles = {
@@ -45,9 +26,7 @@ function StatusBadge({ status }) {
 
   return (
     <span
-      className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold capitalize ${
-        styles[currentStatus]
-      }`}
+      className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold capitalize ${styles[currentStatus]}`}
     >
       {currentStatus}
     </span>
@@ -66,28 +45,16 @@ export default function Admin() {
   const { isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
 
-  // Fetch clients for Overview and Clients sections.
+  // Fetch clients from the Render backend.
   const fetchClients = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const token = getSavedToken();
-
-      const response = await fetch(`${API_BASE}/api/admin/clients`, {
+      const result = await apiRequest("/api/admin/clients", {
         method: "GET",
         cache: "no-store",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
       });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || "Clients load nahi ho sake.");
-      }
 
       setClients(result.data?.clients || []);
     } catch (err) {
@@ -107,7 +74,7 @@ export default function Admin() {
     }
   }, [activeMenu, isAuthenticated, user?.role, fetchClients]);
 
-  // Change a client's status through the protected admin API.
+  // Update a client's status through the protected admin API.
   const handleStatusChange = async (client, nextStatus) => {
     setActionError("");
     setSuccessMessage("");
@@ -115,26 +82,24 @@ export default function Admin() {
     let reason = "";
 
     if (nextStatus === "inactive") {
-      reason = window.prompt(
+      const enteredReason = window.prompt(
         `Deactivate ${client.fullName} (${client.clientId}).\nReason dena compulsory hai:`
       );
 
-      if (reason === null) {
-        return;
-      }
+      if (enteredReason === null) return;
 
-      reason = reason.trim();
+      reason = enteredReason.trim();
 
       if (!reason) {
         setActionError("Deactivate karne ke liye reason dena zaroori hai.");
         return;
       }
 
-      const confirmed = window.confirm(
-        `Kya aap ${client.clientId} ko deactivate karna chahte hain?`
-      );
-
-      if (!confirmed) {
+      if (
+        !window.confirm(
+          `Kya aap ${client.clientId} ko deactivate karna chahte hain?`
+        )
+      ) {
         return;
       }
     }
@@ -160,34 +125,19 @@ export default function Admin() {
     setUpdatingClient(client._id);
 
     try {
-      const token = getSavedToken();
-
-      const response = await fetch(
-        `${API_BASE}/api/admin/clients/${client._id}/status`,
-        {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            status: nextStatus,
-            reason,
-          }),
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || "Client status update nahi hua.");
-      }
+      await apiRequest(`/api/admin/clients/${client._id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: nextStatus,
+          reason,
+        }),
+      });
 
       setSuccessMessage(
         `${client.clientId} ka status ${nextStatus} ho gaya.`
       );
 
-      // Reload data from the backend to show the saved status.
+      // Fetch the saved status again from the backend.
       await fetchClients();
     } catch (err) {
       setActionError(err.message || "Status update nahi ho saka.");
@@ -207,6 +157,10 @@ export default function Admin() {
 
   const pendingCount = clients.filter(
     (client) => !client.status || client.status === "pending"
+  ).length;
+
+  const inactiveCount = clients.filter(
+    (client) => client.status === "inactive"
   ).length;
 
   const stats = [
@@ -437,8 +391,7 @@ export default function Admin() {
                   Manage client approval and account access.
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
-                  Pending: {pendingCount} · Active: {activeCount} · Inactive:{" "}
-                  {clients.filter((client) => client.status === "inactive").length}
+                  Pending: {pendingCount} · Active: {activeCount} · Inactive: {inactiveCount}
                 </p>
               </div>
 
@@ -534,9 +487,7 @@ export default function Admin() {
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-slate-600">
                             {client.createdAt
-                              ? new Date(client.createdAt).toLocaleDateString(
-                                  "en-IN"
-                                )
+                              ? new Date(client.createdAt).toLocaleDateString("en-IN")
                               : "—"}
                           </td>
                           <td className="whitespace-nowrap px-6 py-4">
@@ -555,9 +506,7 @@ export default function Admin() {
                               {status !== "active" && (
                                 <button
                                   disabled={isUpdating}
-                                  onClick={() =>
-                                    handleStatusChange(client, "active")
-                                  }
+                                  onClick={() => handleStatusChange(client, "active")}
                                   className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   {isUpdating
@@ -571,9 +520,7 @@ export default function Admin() {
                               {status !== "inactive" && (
                                 <button
                                   disabled={isUpdating}
-                                  onClick={() =>
-                                    handleStatusChange(client, "inactive")
-                                  }
+                                  onClick={() => handleStatusChange(client, "inactive")}
                                   className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   {isUpdating ? "Updating..." : "Deactivate"}
