@@ -9,6 +9,7 @@ const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const adminRoutes = require("./routes/adminRoutes");
+const fundsRoutes = require("./routes/fundsRoutes");
 
 // Fail early with a clear message if a required variable is missing.
 ["MONGODB_URI", "JWT_SECRET", "CLIENT_URL"].forEach((key) => {
@@ -40,6 +41,7 @@ app.get("/api/health", (req, res) => {
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/funds", fundsRoutes);
 
 // These two MUST come last.
 app.use(notFound);

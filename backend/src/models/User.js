@@ -40,10 +40,19 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
+    // User ka role.
     role: {
       type: String,
       enum: ["client", "admin"],
       default: "client",
+    },
+
+    // Client ka wallet balance (rupees mein).
+    // Naye users ka balance zero se shuru hoga.
+    walletBalance: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
 
     // Client approval status.
@@ -53,7 +62,7 @@ const userSchema = new mongoose.Schema(
       default: "pending",
     },
 
-    // Inactive karne ya status change karne ka reason.
+    // Status change karne ka reason.
     statusReason: {
       type: String,
       trim: true,

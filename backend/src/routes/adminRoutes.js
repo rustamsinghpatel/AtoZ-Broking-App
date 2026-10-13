@@ -4,10 +4,17 @@ const { protect, adminOnly } = require("../middleware/authMiddleware");
 const User = require("../models/User");
 const ApiError = require("../utils/ApiError");
 
+const {
+  getPendingDeposits,
+  reviewDeposit,
+} = require("../controllers/adminController");
+
 const router = express.Router();
 
+// ==========================================
 // GET /api/admin/clients
-// Admin can view all registered clients.
+// Admin ko saare client records dikhane ke liye
+// ==========================================
 router.get("/clients", protect, adminOnly, async (req, res, next) => {
   try {
     const clients = await User.find({ role: "client" })
@@ -17,7 +24,7 @@ router.get("/clients", protect, adminOnly, async (req, res, next) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    res.json({
+    res.status(200).json({
       success: true,
       count: clients.length,
       data: { clients },
@@ -27,8 +34,10 @@ router.get("/clients", protect, adminOnly, async (req, res, next) => {
   }
 });
 
+// ==========================================
 // PATCH /api/admin/clients/:id/status
-// Admin can approve, deactivate, or reactivate a client.
+// Client ko active, pending ya inactive karne ke liye
+// ==========================================
 router.patch(
   "/clients/:id/status",
   protect,
@@ -36,6 +45,7 @@ router.patch(
   async (req, res, next) => {
     try {
       const { status, reason } = req.body || {};
+
       const allowedStatuses = ["pending", "active", "inactive"];
 
       if (!allowedStatuses.includes(status)) {
@@ -68,7 +78,6 @@ router.patch(
       client.statusUpdatedAt = new Date();
       client.statusUpdatedBy = req.user._id;
 
-      // Keep a history of status changes for auditing.
       client.statusHistory.push({
         status,
         reason: status === "inactive" ? cleanReason : "",
@@ -78,7 +87,7 @@ router.patch(
 
       await client.save();
 
-      res.json({
+      res.status(200).json({
         success: true,
         message: `Client status updated to ${status}`,
         data: {
@@ -97,6 +106,28 @@ router.patch(
       next(error);
     }
   }
+);
+
+// ==========================================
+// GET /api/admin/deposits/pending
+// Admin ke pending deposit requests
+// ==========================================
+router.get(
+  "/deposits/pending",
+  protect,
+  adminOnly,
+  getPendingDeposits
+);
+
+// ==========================================
+// PATCH /api/admin/deposits/:id/review
+// Deposit approve ya reject karne ke liye
+// ==========================================
+router.patch(
+  "/deposits/:id/review",
+  protect,
+  adminOnly,
+  reviewDeposit
 );
 
 module.exports = router;
