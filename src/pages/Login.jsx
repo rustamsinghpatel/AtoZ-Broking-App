@@ -105,7 +105,7 @@ export default function Login() {
               A2Z
             </span>
             <div>
-              <p className="text-lg font-semibold">A2Z Broking</p>
+              <p className="text-lg font-semibold">ATOZ Broking</p>
               <p className="text-xs text-green-200">
                 Client Investment Portal
               </p>
@@ -219,7 +219,7 @@ export default function Login() {
             </h1>
 
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              Sign in to your A2Z Broking account to view and
+              Sign in to your ATOZ Broking account to view and
               manage your portal.
             </p>
           </div>
@@ -318,7 +318,7 @@ export default function Login() {
           </div>
 
           <p className="mt-6 text-center text-xs leading-5 text-slate-500">
-            Need help? Contact A2Z Broking support.
+            Need help? Contact ATOZ Broking support.
           </p>
 
           <div className="mt-6 flex items-center justify-center gap-2 text-[11px] text-slate-400">
