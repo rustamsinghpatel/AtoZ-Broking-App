@@ -13,10 +13,10 @@ const createDepositRequest = async (req, res, next) => {
     ).trim();
 
     // Amount validation
-    if (!Number.isFinite(amount) || amount < 500) {
+    if (!Number.isFinite(amount) || amount < 1) {
       throw new ApiError(
         400,
-        "Minimum deposit amount is Rs. 500."
+        "Minimum deposit amount is Rs. 1."
       );
     }
 

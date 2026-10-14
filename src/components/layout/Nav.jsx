@@ -1,11 +1,6 @@
+
 import { useEffect, useState } from "react";
-
-import {
-  NavLink,
-  useLocation,
-  useNavigate,
-} from "react-router-dom";
-
+import { NavLink, useLocation } from "react-router-dom";
 import {
   ArrowLeftRight,
   Bell,
@@ -24,829 +19,510 @@ import {
   MinusCircle,
 } from "lucide-react";
 
-import {
-  cx,
-  Button,
-  Modal,
-} from "../common";
-
+import { cx, Button, Modal } from "../common";
 import useAsync from "../../hooks/useAsync";
+import { getNotifications, getUser } from "../../services/api";
 
-import {
-  getNotifications,
-  getUser,
-} from "../../services/api";
+// Green ATOZ logo — matching the Landing page
+function BrandMark({ size = "normal" }) {
+  const small = size === "small";
 
-
-/* =========================================================
-   MAIN NAVIGATION
-========================================================= */
-
-export const NAV_ITEMS = [
-  {
-    to: "/dashboard",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    to: "/portfolio",
-    label: "Portfolio",
-    icon: PieChart,
-  },
-  {
-    to: "/holdings",
-    label: "Holdings",
-    icon: Briefcase,
-  },
-  {
-    to: "/transactions",
-    label: "Transactions",
-    icon: ArrowLeftRight,
-  },
-  {
-    to: "/reports",
-    label: "Reports",
-    icon: FileText,
-  },
-  {
-    to: "/notifications",
-    label: "Notifications",
-    icon: Bell,
-  },
-];
-
-
-/* =========================================================
-   LOGO
-========================================================= */
-
-export const Logo = () => (
-  <div className="flex items-center gap-2">
-    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-600 text-sm font-bold text-white">
-      ATOZ
-    </span>
-
-    <span className="text-lg font-semibold tracking-tight text-slate-900">
-      ATOZ{" "}
-      <span className="text-green-600">
-        Broking
-      </span>
-    </span>
-  </div>
-);
-
-
-/* =========================================================
-   LOGOUT MODAL
-========================================================= */
-
-export function LogoutModal({
-  open,
-  onClose,
-  onConfirm,
-}) {
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Log out?"
+    <div
+      className={`flex shrink-0 items-center justify-center rounded-xl bg-green-700 font-bold text-white shadow-sm ${
+        small ? "h-9 w-9 text-xs" : "h-10 w-10 text-sm"
+      }`}
     >
-      <p className="text-sm text-slate-600">
-        You will need to sign in again to access your portfolio.
-      </p>
-
-      <div className="mt-5 flex justify-end gap-2">
-        <Button
-          variant="outline"
-          onClick={onClose}
-        >
-          Cancel
-        </Button>
-
-        <Button
-          variant="danger"
-          onClick={onConfirm}
-        >
-          Log out
-        </Button>
-      </div>
-    </Modal>
+      ATOZ
+    </div>
   );
 }
 
+// Reusable logo for Login and other pages
+export function Logo() {
+  return (
+    <div className="flex items-center gap-3">
+      <BrandMark />
 
-/* =========================================================
-   SIDEBAR
-========================================================= */
+      <div>
+        <p className="text-lg font-bold tracking-tight text-slate-900">
+          A TO Z <span className="text-green-600">Broking</span>
+        </p>
+        <p className="text-xs text-slate-500">
+          Client Investment Portal
+        </p>
+      </div>
+    </div>
+  );
+}
 
-export function Sidebar({ onLogout }) {
-  const user = useAsync(getUser);
+// Profile photo — reads the existing Profile page localStorage key
+function ProfileAvatar({ user, size = "normal" }) {
+  const clientId = user?.clientId;
+  const [photo, setPhoto] = useState("");
 
-  const fullName =
-    user.data?.fullName || "Client";
-
-  const clientId =
-    user.data?.clientId || "";
-
-  const initials = fullName
-    .trim()
-    .split(/\s+/)
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
-
-  /* =======================================================
-     USER-SPECIFIC PROFILE PHOTO
-  ======================================================= */
-
-  const getPhotoKey = () => {
-    if (!clientId) return null;
-
-    return `a2z_profile_photo_${clientId}`;
-  };
-
-  const [profilePhoto, setProfilePhoto] = useState(() => {
-    /*
-      We cannot reliably use clientId on the first render
-      because getUser is async.
-
-      It will be loaded again when user data arrives.
-    */
-    return "";
-  });
-
-
-  /* =======================================================
-     LOAD PHOTO WHEN CLIENT ID IS AVAILABLE
-  ======================================================= */
+  const dimensions =
+    size === "large"
+      ? "h-14 w-14 text-xl"
+      : size === "small"
+        ? "h-9 w-9 text-sm"
+        : "h-10 w-10 text-base";
 
   useEffect(() => {
-    const photoKey = getPhotoKey();
-
-    if (!photoKey) {
-      setProfilePhoto("");
-      return;
-    }
-
-    setProfilePhoto(
-      localStorage.getItem(photoKey) || ""
-    );
-  }, [clientId]);
-
-
-  /* =======================================================
-     LISTEN FOR PHOTO CHANGE
-  ======================================================= */
-
-  useEffect(() => {
-    const handlePhotoChange = () => {
-      const photoKey = getPhotoKey();
-
-      if (!photoKey) {
-        setProfilePhoto("");
+    const loadPhoto = () => {
+      if (!clientId) {
+        setPhoto("");
         return;
       }
 
-      setProfilePhoto(
-        localStorage.getItem(photoKey) || ""
-      );
+      try {
+        const savedPhoto = localStorage.getItem(
+          `a2z_profile_photo_${clientId}`
+        );
+        setPhoto(savedPhoto || "");
+      } catch {
+        setPhoto("");
+      }
     };
 
-    window.addEventListener(
-      "a2z-profile-photo-updated",
-      handlePhotoChange
-    );
+    loadPhoto();
+
+    window.addEventListener("a2z-profile-photo-updated", loadPhoto);
+    window.addEventListener("storage", loadPhoto);
 
     return () => {
-      window.removeEventListener(
-        "a2z-profile-photo-updated",
-        handlePhotoChange
-      );
+      window.removeEventListener("a2z-profile-photo-updated", loadPhoto);
+      window.removeEventListener("storage", loadPhoto);
     };
   }, [clientId]);
 
+  const initial = (user?.name || "Client").charAt(0).toUpperCase();
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-slate-200 bg-white lg:flex">
+    <div
+      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-green-100 font-semibold text-green-800 ring-1 ring-green-200 ${dimensions}`}
+    >
+      {photo ? (
+        <img
+          src={photo}
+          alt={`${user?.name || "Client"} profile`}
+          className="h-full w-full rounded-full object-cover"
+          onError={() => setPhoto("")}
+        />
+      ) : (
+        initial
+      )}
+    </div>
+  );
+}
 
-      {/* LOGO */}
-      <div className="px-5 py-5">
-        <Logo />
+// Main navigation links
+const NAV_ITEMS = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/portfolio", label: "Portfolio", icon: PieChart },
+  { to: "/holdings", label: "Holdings", icon: Briefcase },
+  { to: "/transactions", label: "Transactions", icon: ArrowLeftRight },
+  { to: "/reports", label: "Reports", icon: FileText },
+  { to: "/notifications", label: "Notifications", icon: Bell },
+];
+
+// Desktop sidebar
+export function Sidebar({ onLogout }) {
+  const location = useLocation();
+  const { data: user } = useAsync(getUser);
+
+  return (
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-slate-200 bg-white lg:flex">
+      <div className="flex h-16 items-center gap-3 border-b border-slate-200 px-6">
+        <BrandMark size="small" />
+
+        <div>
+          <h1 className="text-lg font-bold tracking-tight text-slate-900">
+            A TO Z <span className="text-green-600">Broking</span>
+          </h1>
+          <p className="text-xs text-slate-500">Client Portal</p>
+        </div>
       </div>
 
-
-      {/* NAVIGATION */}
-      <nav
-        className="flex-1 space-y-1 overflow-y-auto px-3"
-        aria-label="Main"
-      >
-
-        {/* MAIN MENU */}
-        <p className="px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+      <div className="flex-1 overflow-y-auto px-3 py-5">
+        <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
           Main Menu
         </p>
 
-        {NAV_ITEMS.map(
-          ({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) =>
-                cx(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
-                  isActive
+        <nav className="space-y-1">
+          {NAV_ITEMS.map(({ to, label, icon: Icon }) => {
+            const active =
+              location.pathname === to ||
+              location.pathname.startsWith(`${to}/`);
+
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                className={cx(
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                  active
                     ? "bg-green-50 text-green-700"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                )
-              }
-            >
-              <Icon size={18} />
-              {label}
-            </NavLink>
-          )
-        )}
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                )}
+              >
+                <Icon size={19} />
+                <span>{label}</span>
+              </NavLink>
+            );
+          })}
+        </nav>
 
+        <p className="mb-3 mt-7 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+          Account
+        </p>
 
-        {/* FUNDS */}
-        <div className="pt-5">
-
-          <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            Funds
-          </p>
-
-
-          {/* Funds Overview */}
+        <nav className="space-y-1">
           <NavLink
             to="/funds"
             className={({ isActive }) =>
               cx(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium",
                 isActive
                   ? "bg-green-50 text-green-700"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  : "text-slate-600 hover:bg-slate-50"
               )
             }
           >
-            <Wallet size={18} />
-            Funds Overview
+            <Wallet size={19} />
+            <span>Funds Overview</span>
           </NavLink>
 
-
-          {/* Deposit */}
           <NavLink
             to="/deposit"
             className={({ isActive }) =>
               cx(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium",
                 isActive
                   ? "bg-green-50 text-green-700"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  : "text-slate-600 hover:bg-slate-50"
               )
             }
           >
-            <PlusCircle size={18} />
-            Deposit
+            <PlusCircle size={19} />
+            <span>Deposit</span>
           </NavLink>
 
-
-          {/* Withdrawal */}
           <NavLink
             to="/withdrawal"
             className={({ isActive }) =>
               cx(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium",
                 isActive
                   ? "bg-green-50 text-green-700"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  : "text-slate-600 hover:bg-slate-50"
               )
             }
           >
-            <MinusCircle size={18} />
-            Withdrawal
+            <MinusCircle size={19} />
+            <span>Withdrawal</span>
           </NavLink>
-
-        </div>
-
-
-        {/* PROFILE */}
-        <div className="pt-1">
 
           <NavLink
             to="/profile"
             className={({ isActive }) =>
               cx(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium",
                 isActive
                   ? "bg-green-50 text-green-700"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  : "text-slate-600 hover:bg-slate-50"
               )
             }
           >
-            <User size={18} />
-            Profile
+            <User size={19} />
+            <span>Profile</span>
           </NavLink>
-
-        </div>
-
-      </nav>
-
-
-      {/* USER + LOGOUT */}
-      <div className="border-t border-slate-200 p-3">
-
-        <div className="mb-3 flex items-center gap-3 px-2">
-
-          {/* USER-SPECIFIC PROFILE IMAGE */}
-          <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-green-600">
-
-            {profilePhoto ? (
-              <img
-                src={profilePhoto}
-                alt="Profile"
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-white">
-                {initials}
-              </div>
-            )}
-
-          </div>
-
-
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-slate-900">
-              {fullName}
-            </p>
-
-            <p className="text-xs text-slate-500">
-              Client
-            </p>
-          </div>
-
-        </div>
-
-
-        <button
-          onClick={onLogout}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-red-50 hover:text-red-600"
-        >
-          <LogOut size={18} />
-          Logout
-        </button>
-
+        </nav>
       </div>
 
+      <div className="border-t border-slate-200 p-4">
+        <div className="mb-3 flex items-center gap-3">
+          <ProfileAvatar user={user} />
+
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-slate-800">
+              {user?.name || "Client"}
+            </p>
+            <p className="truncate text-xs text-slate-500">
+              {user?.clientId || user?.email || "Client Account"}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onLogout}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-red-600 hover:bg-red-50"
+        >
+          <LogOut size={18} />
+          <span>Logout</span>
+        </button>
+      </div>
     </aside>
   );
 }
 
-
-/* =========================================================
-   TOP HEADER
-========================================================= */
-
+// Top header
 export function TopHeader({ onLogout }) {
-  const navigate = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const location = useLocation();
+  const { data: user } = useAsync(getUser);
+  const { data: notifications } = useAsync(getNotifications);
 
-  const { pathname } = useLocation();
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
 
-  const [q, setQ] = useState("");
-  const [menu, setMenu] = useState(false);
-
-
-  /* =======================================================
-     NOTIFICATIONS
-  ======================================================= */
-
-  const { data } = useAsync(
-    getNotifications,
-    [pathname]
-  );
-
-
-  /* =======================================================
-     REAL LOGGED-IN USER
-  ======================================================= */
-
-  const user = useAsync(
-    getUser,
-    [pathname]
-  );
-
-  const fullName =
-    user.data?.fullName || "Client";
-
-  const clientId =
-    user.data?.clientId || "";
-
-
-  const unread = data
-    ? data.filter((n) => !n.read).length
+  const unreadCount = Array.isArray(notifications)
+    ? notifications.filter((item) => !item.read).length
     : 0;
 
-
-  const initials = fullName
-    .trim()
-    .split(/\s+/)
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-
-
-  /* =======================================================
-     USER-SPECIFIC PROFILE PHOTO
-  ======================================================= */
-
-  const getPhotoKey = () => {
-    if (!clientId) return null;
-
-    return `a2z_profile_photo_${clientId}`;
-  };
-
-
-  const [profilePhoto, setProfilePhoto] = useState("");
-
-
-  /* =======================================================
-     LOAD PHOTO WHEN CLIENT ID IS AVAILABLE
-  ======================================================= */
-
-  useEffect(() => {
-    const photoKey = getPhotoKey();
-
-    if (!photoKey) {
-      setProfilePhoto("");
-      return;
-    }
-
-    setProfilePhoto(
-      localStorage.getItem(photoKey) || ""
-    );
-  }, [clientId]);
-
-
-  /* =======================================================
-     LISTEN FOR PHOTO CHANGE
-  ======================================================= */
-
-  useEffect(() => {
-    const handlePhotoChange = () => {
-      const photoKey = getPhotoKey();
-
-      if (!photoKey) {
-        setProfilePhoto("");
-        return;
-      }
-
-      setProfilePhoto(
-        localStorage.getItem(photoKey) || ""
-      );
-    };
-
-    window.addEventListener(
-      "a2z-profile-photo-updated",
-      handlePhotoChange
-    );
-
-    return () => {
-      window.removeEventListener(
-        "a2z-profile-photo-updated",
-        handlePhotoChange
-      );
-    };
-  }, [clientId]);
-
-
   return (
-    <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur sm:px-6">
-
-      {/* MOBILE LOGO */}
-      <div className="lg:hidden">
-        <Logo />
-      </div>
-
-
-      {/* SEARCH */}
-      <form
-        className="relative hidden max-w-sm flex-1 sm:block"
-        onSubmit={(e) => {
-          e.preventDefault();
-
-          navigate(
-            `/holdings?q=${encodeURIComponent(q)}`
-          );
-        }}
-        role="search"
-      >
-        <Search
-          size={16}
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-        />
-
-        <input
-          aria-label="Search holdings"
-          value={q}
-          onChange={(e) =>
-            setQ(e.target.value)
-          }
-          placeholder="Search holdings..."
-          className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100"
-        />
-      </form>
-
-
-      {/* RIGHT SIDE */}
-      <div className="ml-auto flex items-center gap-2">
-
-        {/* Notifications */}
-        <NavLink
-          to="/notifications"
-          aria-label="Notifications"
-          className="relative rounded-lg p-2 text-slate-600 hover:bg-slate-100"
-        >
-          <Bell size={20} />
-
-          {unread > 0 && (
-            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
-              {unread}
-            </span>
-          )}
-        </NavLink>
-
-
-        {/* USER MENU */}
-        <div className="relative">
-
-          <button
-            onClick={() =>
-              setMenu((m) => !m)
-            }
-            aria-haspopup="menu"
-            aria-expanded={menu}
-            className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-slate-100"
-          >
-
-            {/* USER-SPECIFIC PROFILE IMAGE */}
-            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-green-600">
-
-              {profilePhoto ? (
-                <img
-                  src={profilePhoto}
-                  alt="Profile"
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-white">
-                  {initials}
-                </div>
-              )}
-
-            </div>
-
-
-            <span className="hidden text-sm font-medium sm:block">
-              {fullName}
-            </span>
-
-            <ChevronDown
-              size={14}
-              className="hidden text-slate-400 sm:block"
-            />
-
-          </button>
-
-
-          {/* DROPDOWN */}
-          {menu && (
-            <div
-              role="menu"
-              className="absolute right-0 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
-              onClick={() =>
-                setMenu(false)
-              }
-            >
-
-              <NavLink
-                role="menuitem"
-                to="/profile"
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-slate-100"
-              >
-                <User size={16} />
-                My profile
-              </NavLink>
-
-
-              <NavLink
-                role="menuitem"
-                to="/funds"
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-slate-100"
-              >
-                <Wallet size={16} />
-                Funds
-              </NavLink>
-
-
-              <NavLink
-                role="menuitem"
-                to="/deposit"
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-slate-100"
-              >
-                <PlusCircle size={16} />
-                Deposit
-              </NavLink>
-
-
-              <NavLink
-                role="menuitem"
-                to="/withdrawal"
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-slate-100"
-              >
-                <MinusCircle size={16} />
-                Withdrawal
-              </NavLink>
-
-
-              <div className="my-1 border-t border-slate-100" />
-
-
-              <button
-                role="menuitem"
-                onClick={onLogout}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-              >
-                <LogOut size={16} />
-                Logout
-              </button>
-
-            </div>
-          )}
-
+    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
+      <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6">
+        <div className="flex items-center gap-3 lg:hidden">
+          <BrandMark size="small" />
+          <span className="font-bold text-slate-900">
+            A TO Z <span className="text-green-600">Broking</span>
+          </span>
         </div>
 
-      </div>
+        <div className="hidden max-w-md flex-1 items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 sm:flex lg:ml-0">
+          <Search size={17} className="text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search..."
+            aria-label="Search"
+            className="w-full bg-transparent text-sm outline-none"
+          />
+        </div>
 
+        <div className="ml-auto flex items-center gap-3">
+          <NavLink
+            to="/notifications"
+            aria-label="Notifications"
+            className="relative rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+          >
+            <Bell size={21} />
+            {unreadCount > 0 && (
+              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] text-white">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </NavLink>
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMenuOpen((previous) => !previous)}
+              className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-slate-100"
+              aria-expanded={menuOpen}
+              aria-label="Open account menu"
+            >
+              <ProfileAvatar user={user} size="small" />
+
+              <span className="hidden max-w-32 truncate text-sm font-medium text-slate-700 sm:block">
+                {user?.name || "Client"}
+              </span>
+
+              <ChevronDown size={16} className="text-slate-500" />
+            </button>
+
+            {menuOpen && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Close account menu"
+                  className="fixed inset-0 z-40 cursor-default"
+                  onClick={() => setMenuOpen(false)}
+                />
+
+                <div className="absolute right-0 z-50 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                  <div className="border-b border-slate-100 px-3 py-2">
+                    <p className="truncate text-sm font-semibold text-slate-800">
+                      {user?.name || "Client"}
+                    </p>
+                    <p className="truncate text-xs text-slate-500">
+                      {user?.email || user?.clientId || ""}
+                    </p>
+                  </div>
+
+                  <NavLink
+                    to="/profile"
+                    onClick={() => setMenuOpen(false)}
+                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <User size={17} />
+                    <span>My Profile</span>
+                  </NavLink>
+
+                  <NavLink
+                    to="/funds"
+                    onClick={() => setMenuOpen(false)}
+                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <Wallet size={17} />
+                    <span>Funds</span>
+                  </NavLink>
+
+                  <NavLink
+                    to="/deposit"
+                    onClick={() => setMenuOpen(false)}
+                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <PlusCircle size={17} />
+                    <span>Deposit</span>
+                  </NavLink>
+
+                  <NavLink
+                    to="/withdrawal"
+                    onClick={() => setMenuOpen(false)}
+                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <MinusCircle size={17} />
+                    <span>Withdrawal</span>
+                  </NavLink>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onLogout();
+                    }}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-red-600 hover:bg-red-50"
+                  >
+                    <LogOut size={17} />
+                    <span>Logout</span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
     </header>
   );
 }
 
-
-/* =========================================================
-   MOBILE BOTTOM NAVIGATION
-========================================================= */
-
-export function MobileBottomNav({
-  onLogout,
-}) {
+// Mobile bottom navigation
+export function MobileBottomNav({ onLogout }) {
   const [more, setMore] = useState(false);
 
-
   const main = [
-    {
-      to: "/dashboard",
-      label: "Home",
-      icon: Home,
-    },
-    {
-      to: "/portfolio",
-      label: "Portfolio",
-      icon: PieChart,
-    },
-    {
-      to: "/transactions",
-      label: "Transactions",
-      icon: ArrowLeftRight,
-    },
-    {
-      to: "/profile",
-      label: "Profile",
-      icon: User,
-    },
+    { to: "/dashboard", label: "Home", icon: Home },
+    { to: "/portfolio", label: "Portfolio", icon: PieChart },
+    { to: "/transactions", label: "Transactions", icon: ArrowLeftRight },
   ];
-
 
   const extra = [
-    ...NAV_ITEMS.filter(
-      (i) =>
-        [
-          "/holdings",
-          "/reports",
-          "/notifications",
-        ].includes(i.to)
+    ...NAV_ITEMS.filter((item) =>
+      ["/holdings", "/reports", "/notifications"].includes(item.to)
     ),
-
-    {
-      to: "/funds",
-      label: "Funds",
-      icon: Wallet,
-    },
-
-    {
-      to: "/deposit",
-      label: "Deposit",
-      icon: PlusCircle,
-    },
-
-    {
-      to: "/withdrawal",
-      label: "Withdrawal",
-      icon: MinusCircle,
-    },
+    { to: "/funds", label: "Funds", icon: Wallet },
+    { to: "/deposit", label: "Deposit", icon: PlusCircle },
+    { to: "/withdrawal", label: "Withdrawal", icon: MinusCircle },
   ];
-
-
-  const item =
-    "flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium";
-
 
   return (
     <>
-      {/* MOBILE BOTTOM BAR */}
-      <nav
-        aria-label="Mobile"
-        className="fixed inset-x-0 bottom-0 z-30 flex border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] lg:hidden"
-      >
-
-        {main.map(
-          ({ to, label, icon: Icon }) => (
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white lg:hidden">
+        <div className="grid grid-cols-4">
+          {main.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
               className={({ isActive }) =>
                 cx(
-                  item,
+                  "flex flex-col items-center justify-center gap-1 py-3 text-xs transition-colors",
                   isActive
-                    ? "text-green-600"
-                    : "text-slate-500"
+                    ? "text-green-700"
+                    : "text-slate-500 hover:text-slate-800"
                 )
               }
             >
               <Icon size={20} />
-              {label}
+              <span>{label}</span>
             </NavLink>
-          )
-        )}
+          ))}
 
-
-        {/* More */}
-        <button
-          onClick={() => setMore(true)}
-          className={cx(
-            item,
-            "text-slate-500"
-          )}
-        >
-          <MoreHorizontal size={20} />
-          More
-        </button>
-
+          <button
+            type="button"
+            onClick={() => setMore(true)}
+            className="flex flex-col items-center justify-center gap-1 py-3 text-xs text-slate-500 hover:text-slate-800"
+          >
+            <MoreHorizontal size={20} />
+            <span>More</span>
+          </button>
+        </div>
       </nav>
 
-
-      {/* MORE MODAL */}
       <Modal
         open={more}
         onClose={() => setMore(false)}
-        title="More"
+        title="More Options"
       >
+        <div className="space-y-1">
+          {extra.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              onClick={() => setMore(false)}
+              className={({ isActive }) =>
+                cx(
+                  "flex items-center gap-3 rounded-lg px-4 py-3 text-sm transition-colors",
+                  isActive
+                    ? "bg-green-50 font-medium text-green-700"
+                    : "text-slate-600 hover:bg-slate-50"
+                )
+              }
+            >
+              <Icon size={18} />
+              <span>{label}</span>
+            </NavLink>
+          ))}
 
-        <div
-          className="space-y-1"
-          onClick={() => setMore(false)}
-        >
-
-          {extra.map(
-            ({ to, label, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                className="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium hover:bg-slate-100"
-              >
-                <Icon
-                  size={18}
-                  className="text-green-600"
-                />
-                {label}
-              </NavLink>
-            )
-          )}
-
-
-          {/* Logout */}
           <button
-            onClick={onLogout}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-red-600 hover:bg-red-50"
+            type="button"
+            onClick={() => {
+              setMore(false);
+              onLogout();
+            }}
+            className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-red-600 hover:bg-red-50"
           >
             <LogOut size={18} />
-            Logout
+            <span>Logout</span>
           </button>
-
         </div>
-
       </Modal>
     </>
+  );
+}
+
+// Logout confirmation modal
+export function LogoutModal({ open, onClose, onConfirm }) {
+  return (
+    <Modal open={open} onClose={onClose} title="Confirm Logout">
+      <div className="space-y-4">
+        <p className="text-sm text-slate-600">
+          Are you sure you want to log out of your AtoZ Broking account?
+        </p>
+
+        <div className="flex justify-end gap-3">
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+
+          <Button onClick={onConfirm}>
+            <LogOut size={16} className="mr-2 inline" />
+            Logout
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }

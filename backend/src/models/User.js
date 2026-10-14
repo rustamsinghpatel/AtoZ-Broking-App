@@ -32,6 +32,28 @@ const userSchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
+    // Profile: user ki basic profile details
+address: { type: String, trim: true, default: "" },
+city: { type: String, trim: true, default: "" },
+state: { type: String, trim: true, default: "" },
+postalCode: { type: String, trim: true, default: "" },
+
+// KYC status: client account status se alag
+kycStatus: {
+  type: String,
+  enum: ["not_submitted", "pending", "approved", "rejected"],
+  default: "not_submitted",
+},
+kycPanMasked: { type: String, default: "" },
+kycAadhaarLast4: { type: String, default: "" },
+kycSubmittedAt: { type: Date, default: null },
+kycReviewedAt: { type: Date, default: null },
+kycReviewedBy: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "User",
+  default: null,
+},
+kycRejectionReason: { type: String, trim: true, default: "" },
 
     // Password database mein hash hokar save hoga.
     password: {

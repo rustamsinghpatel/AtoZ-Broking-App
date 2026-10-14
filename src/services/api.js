@@ -1,17 +1,21 @@
 
 /*
-  A2Z Broking API Service Layer
-
-  Real backend:
-  - Authentication / current user
-
-  Temporary mock data:
-  - Holdings
-  - Portfolio
-  - Transactions
-  - Reports
-  - Notifications
-*/
+ * AtoZ Broking API Service Layer
+ *
+ * REAL BACKEND:
+ * - Authentication / current user
+ * - Profile update
+ * - Password change
+ * - KYC submission
+ * - Admin pending KYC / review
+ *
+ * TEMPORARY MOCK DATA:
+ * - Holdings
+ * - Portfolio
+ * - Transactions
+ * - Reports
+ * - Notifications
+ */
 
 import { mockHoldings, mockPerformance } from "../data/mockPortfolio";
 import {
@@ -35,37 +39,42 @@ const getToken = () => {
     localStorage.getItem("a2z_session") ||
     sessionStorage.getItem("a2z_session");
 
-  if (!session) {
-    return null;
-  }
+  if (!session) return null;
 
   try {
     const parsed = JSON.parse(session);
     return parsed.token || null;
   } catch (error) {
-    console.error("Invalid A2Z session:", error);
+    console.error("Invalid AtoZ session:", error);
     return null;
   }
 };
 
 // --------------------------------------------------
 // 3. Common API request helper
-// Admin.jsx and Signup.jsx will use this function.
+// Used by authentication, Admin and Signup APIs.
 // --------------------------------------------------
 
 export const apiRequest = async (endpoint, options = {}) => {
   const token = getToken();
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-  });
+  let response;
 
-  // Handle empty or non-JSON responses safely.
+  try {
+    response = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers || {}),
+      },
+    });
+  } catch (error) {
+    throw new Error(
+      "Unable to connect to the server. Check your internet connection or backend availability."
+    );
+  }
+
   let result;
 
   try {
@@ -107,7 +116,9 @@ const enrich = (holding) => {
     invested,
     current,
     pnl: current - invested,
-    ret: invested ? ((current - invested) / invested) * 100 : 0,
+    ret: invested
+      ? ((current - invested) / invested) * 100
+      : 0,
   };
 };
 
@@ -116,11 +127,62 @@ const enrich = (holding) => {
 // ==================================================
 
 // GET /api/auth/me
-// Returns the logged-in user using the saved JWT token.
-
 export const getUser = async () => {
   const result = await apiRequest("/api/auth/me");
   return result.data.user;
+};
+
+// PATCH /api/auth/profile
+export const updateUserProfile = async (profileData) => {
+  const result = await apiRequest("/api/auth/profile", {
+    method: "PATCH",
+    body: JSON.stringify(profileData),
+  });
+
+  return result.data.user;
+};
+
+// PATCH /api/auth/password
+export const changeUserPassword = async (passwordData) => {
+  return apiRequest("/api/auth/password", {
+    method: "PATCH",
+    body: JSON.stringify(passwordData),
+  });
+};
+
+// POST /api/auth/kyc
+// Send masked PAN and Aadhaar last four digits only.
+export const submitUserKyc = async (kycData) => {
+  return apiRequest("/api/auth/kyc", {
+    method: "POST",
+    body: JSON.stringify(kycData),
+  });
+};
+
+// GET /api/admin/kyc/pending
+export const getPendingKyc = async () => {
+  const result = await apiRequest("/api/admin/kyc/pending");
+  return result.data.clients;
+};
+
+// PATCH /api/admin/kyc/:id/review
+// userId must be the MongoDB _id expected by the backend route.
+export const reviewUserKyc = async (
+  userId,
+  status,
+  reason = ""
+) => {
+  if (!userId) {
+    throw new Error("User ID is required to review KYC.");
+  }
+
+  return apiRequest(
+    `/api/admin/kyc/${encodeURIComponent(userId)}/review`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ status, reason }),
+    }
+  );
 };
 
 // ==================================================
@@ -195,7 +257,9 @@ const READ_KEY = "a2z_read_notifications";
 // Get IDs of notifications already marked as read.
 const readIds = () => {
   try {
-    return JSON.parse(localStorage.getItem(READ_KEY) || "[]");
+    return JSON.parse(
+      localStorage.getItem(READ_KEY) || "[]"
+    );
   } catch {
     return [];
   }

@@ -1,20 +1,27 @@
 
 const express = require("express");
-const { protect, adminOnly } = require("../middleware/authMiddleware");
+
+const {
+  protect,
+  adminOnly,
+} = require("../middleware/authMiddleware");
+
 const User = require("../models/User");
 const ApiError = require("../utils/ApiError");
 
 const {
   getPendingDeposits,
   reviewDeposit,
+  getPendingKyc,
+  reviewKyc,
 } = require("../controllers/adminController");
 
 const router = express.Router();
 
-// ==========================================
+// ==================================================
 // GET /api/admin/clients
-// Admin ko saare client records dikhane ke liye
-// ==========================================
+// Admin ko saare clients dikhane ke liye
+// ==================================================
 router.get("/clients", protect, adminOnly, async (req, res, next) => {
   try {
     const clients = await User.find({ role: "client" })
@@ -24,7 +31,7 @@ router.get("/clients", protect, adminOnly, async (req, res, next) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       count: clients.length,
       data: { clients },
@@ -34,10 +41,10 @@ router.get("/clients", protect, adminOnly, async (req, res, next) => {
   }
 });
 
-// ==========================================
+// ==================================================
 // PATCH /api/admin/clients/:id/status
-// Client ko active, pending ya inactive karne ke liye
-// ==========================================
+// Client ko active, pending ya inactive karna
+// ==================================================
 router.patch(
   "/clients/:id/status",
   protect,
@@ -70,13 +77,18 @@ router.patch(
       });
 
       if (!client) {
-        throw new ApiError(404, "Client not found");
+        throw new ApiError(404, "Client not found.");
       }
 
       client.status = status;
-      client.statusReason = status === "inactive" ? cleanReason : "";
+      client.statusReason =
+        status === "inactive" ? cleanReason : "";
       client.statusUpdatedAt = new Date();
       client.statusUpdatedBy = req.user._id;
+
+      if (!Array.isArray(client.statusHistory)) {
+        client.statusHistory = [];
+      }
 
       client.statusHistory.push({
         status,
@@ -87,9 +99,9 @@ router.patch(
 
       await client.save();
 
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
-        message: `Client status updated to ${status}`,
+        message: `Client status updated to ${status}.`,
         data: {
           client: {
             _id: client._id,
@@ -108,10 +120,10 @@ router.patch(
   }
 );
 
-// ==========================================
+// ==================================================
 // GET /api/admin/deposits/pending
 // Admin ke pending deposit requests
-// ==========================================
+// ==================================================
 router.get(
   "/deposits/pending",
   protect,
@@ -119,15 +131,37 @@ router.get(
   getPendingDeposits
 );
 
-// ==========================================
+// ==================================================
 // PATCH /api/admin/deposits/:id/review
-// Deposit approve ya reject karne ke liye
-// ==========================================
+// Deposit approve ya reject karna
+// ==================================================
 router.patch(
   "/deposits/:id/review",
   protect,
   adminOnly,
   reviewDeposit
+);
+
+// ==================================================
+// GET /api/admin/kyc/pending
+// Admin ke pending KYC requests
+// ==================================================
+router.get(
+  "/kyc/pending",
+  protect,
+  adminOnly,
+  getPendingKyc
+);
+
+// ==================================================
+// PATCH /api/admin/kyc/:id/review
+// KYC approve ya reject karna
+// ==================================================
+router.patch(
+  "/kyc/:id/review",
+  protect,
+  adminOnly,
+  reviewKyc
 );
 
 module.exports = router;

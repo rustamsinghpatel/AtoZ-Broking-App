@@ -4,62 +4,93 @@ import {
   Building2,
   CheckCircle2,
   ChevronRight,
-  CreditCard,
   Copy,
+  CreditCard,
   Landmark,
   QrCode,
-  Smartphone,
 } from "lucide-react";
 
-import { useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { apiRequest } from "../services/api";
 
 export default function Deposit() {
-  const navigate = useNavigate();
-
   const [amount, setAmount] = useState("");
-  const [submitted, setSubmitted] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [method, setMethod] = useState("UPI");
+  const [referenceNumber, setReferenceNumber] = useState("");
+  const [submittedDeposit, setSubmittedDeposit] = useState(null);
+  const [copiedField, setCopiedField] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  // Client ki asli UPI ID milne par yahan add karna.
-  const upiId = "";
-
-  // Indian currency format.
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(value);
+  const bankDetails = {
+    name: "RBL BANK",
+    accountNumber: "309031070256",
+    ifsc: "RATN0000571",
   };
 
-  // Deposit amount validation.
-  const handleDeposit = (e) => {
+  // Client se verified UPI ID milne par yahan add karna.
+  const upiId = "";
+
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 2,
+    }).format(value);
+
+  // Real backend par deposit request save karta hai.
+  const handleDeposit = async (e) => {
     e.preventDefault();
+    setError("");
 
     const depositAmount = Number(amount);
 
-    if (!Number.isFinite(depositAmount) || depositAmount < 500) {
-      alert("Minimum deposit amount ₹500 hai.");
+    if (!Number.isFinite(depositAmount) || depositAmount < 1) {
+      setError("Minimum deposit amount ₹1 hai.");
       return;
     }
 
-    // Abhi demo mode hai. Backend request save nahi hoti.
-    setSubmitted(true);
-  };
-
-  // UPI ID copy.
-  const handleCopyUPI = async () => {
-    if (!upiId) {
-      alert("Client ki UPI ID abhi add nahi hui hai.");
+    if (!Number.isInteger(depositAmount)) {
+      setError("Amount poore rupees mein enter karein.");
       return;
     }
+
+    setLoading(true);
 
     try {
-      await navigator.clipboard.writeText(upiId);
-      setCopied(true);
+      const result = await apiRequest("/api/funds/deposit", {
+        method: "POST",
+        body: JSON.stringify({
+          amount: depositAmount,
+          method,
+          referenceNumber: referenceNumber.trim(),
+        }),
+      });
+
+      if (!result?.success || !result?.data?.deposit) {
+        throw new Error(
+          result?.message || "Deposit request save nahi ho saki."
+        );
+      }
+
+      // Confirmation tabhi jab backend request save kar de.
+      setSubmittedDeposit(result.data.deposit);
+    } catch (err) {
+      setError(
+        err.message ||
+          "Server se connect nahi ho paya. Please dobara try karein."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopy = async (value, field) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedField(field);
     } catch {
-      alert("UPI ID manually copy karein.");
+      alert(`${field} manually copy karein: ${value}`);
     }
   };
 
@@ -70,26 +101,26 @@ export default function Deposit() {
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">
           Deposit Funds
         </h1>
-
         <p className="mt-1 text-sm text-slate-500">
           Add funds to your ATOZ Broking trading account.
         </p>
       </div>
 
-      {/* AVAILABLE BALANCE - DEMO VALUE */}
+      {/* BALANCE: abhi backend se live balance nahi aa raha */}
       <div className="rounded-xl border border-green-100 bg-green-50 p-5">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-green-600 shadow-sm">
             <Landmark size={21} />
           </div>
-
           <div>
             <p className="text-xs font-medium text-green-700">
               Current Available Balance
             </p>
-
             <p className="mt-1 text-xl font-bold text-green-900">
               {formatCurrency(0)}
+            </p>
+            <p className="mt-1 text-xs text-green-700">
+              Balance abhi demo value hai.
             </p>
           </div>
         </div>
@@ -102,54 +133,58 @@ export default function Deposit() {
             <h2 className="text-lg font-semibold text-slate-900">
               Add Money
             </h2>
-
             <p className="mt-1 text-sm text-slate-500">
-              Enter the amount and scan the QR code to pay.
+              Amount aur payment method select karein.
             </p>
           </div>
 
-          {submitted ? (
-            /* DEMO CONFIRMATION */
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+          {submittedDeposit ? (
+            <div className="rounded-xl border border-green-200 bg-green-50 p-6 text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-700">
                 <CheckCircle2 size={30} />
               </div>
 
-              <h3 className="mt-4 text-lg font-semibold text-amber-900">
-                Deposit Pending Verification
+              <h3 className="mt-4 text-lg font-semibold text-green-900">
+                Deposit Request Submitted
               </h3>
 
-              <p className="mt-2 text-sm text-amber-800">
-                Deposit amount:{" "}
-                <strong>{formatCurrency(Number(amount))}</strong>
+              <p className="mt-2 text-sm text-green-800">
+                Amount:{" "}
+                <strong>
+                  {formatCurrency(submittedDeposit.amount)}
+                </strong>
               </p>
 
-              <p className="mt-2 text-sm text-amber-800">
-                Ye sirf demo confirmation hai. Payment verify nahi hui
-                hai aur request backend mein save nahi hui hai.
+              <p className="mt-1 text-sm text-green-800">
+                Status:{" "}
+                <strong>
+                  {submittedDeposit.status || "pending"}
+                </strong>
               </p>
 
-              <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
-                <button
-                  type="button"
-                  onClick={() => navigate("/funds")}
-                  className="rounded-lg bg-green-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-700"
-                >
-                  View Funds
-                </button>
+              <p className="mt-1 break-all text-xs text-green-800">
+                Request ID: {submittedDeposit._id}
+              </p>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSubmitted(false);
-                    setAmount("");
-                    setCopied(false);
-                  }}
-                  className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  New Deposit
-                </button>
-              </div>
+              <p className="mt-3 text-sm leading-6 text-green-800">
+                Request backend mein save ho gayi hai. Payment verify hone
+                aur admin approval se pehle wallet balance credit nahi hoga.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSubmittedDeposit(null);
+                  setAmount("");
+                  setReferenceNumber("");
+                  setMethod("UPI");
+                  setError("");
+                  setCopiedField("");
+                }}
+                className="mt-5 rounded-lg border border-green-300 bg-white px-5 py-2.5 text-sm font-semibold text-green-800 hover:bg-green-100"
+              >
+                New Deposit
+              </button>
             </div>
           ) : (
             <form onSubmit={handleDeposit} className="space-y-6">
@@ -166,14 +201,16 @@ export default function Deposit() {
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
                     ₹
                   </span>
-
                   <input
                     id="deposit-amount"
                     type="number"
-                    min="500"
+                    min="1"
                     step="1"
                     value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
+                    onChange={(e) => {
+                      setAmount(e.target.value);
+                      setError("");
+                    }}
                     placeholder="Enter amount"
                     className="w-full rounded-lg border border-slate-200 bg-white py-3 pl-9 pr-4 text-sm outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100"
                     required
@@ -181,49 +218,89 @@ export default function Deposit() {
                 </div>
 
                 <p className="mt-1.5 text-xs text-slate-500">
-                  Minimum deposit amount: ₹500
+                  Minimum deposit amount: ₹1
                 </p>
               </div>
 
-              {/* PAYMENT METHOD: QR ONLY */}
+              {/* PAYMENT METHOD */}
               <div>
                 <label className="mb-3 block text-sm font-medium text-slate-700">
                   Payment Method
                 </label>
 
-                <div className="rounded-xl border-2 border-green-600 bg-green-50 p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-white text-green-600">
-                      <QrCode size={25} />
-                    </div>
-
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-900">
-                        UPI QR Code
-                      </p>
-
-                      <p className="mt-1 text-xs text-slate-500">
-                        Scan using a supported UPI payment app.
-                      </p>
-                    </div>
-
-                    <CheckCircle2
-                      size={21}
-                      className="text-green-600"
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMethod("UPI");
+                      setError("");
+                    }}
+                    className={`flex items-center gap-3 rounded-xl border-2 p-4 text-left ${
+                      method === "UPI"
+                        ? "border-green-600 bg-green-50"
+                        : "border-slate-200 bg-white"
+                    }`}
+                  >
+                    <QrCode
+                      size={24}
+                      className={
+                        method === "UPI"
+                          ? "text-green-600"
+                          : "text-slate-500"
+                      }
                     />
-                  </div>
+                    <span className="text-sm font-semibold text-slate-900">
+                      UPI / QR
+                    </span>
+                    {method === "UPI" && (
+                      <CheckCircle2
+                        size={18}
+                        className="ml-auto text-green-600"
+                      />
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMethod("Bank Transfer");
+                      setError("");
+                    }}
+                    className={`flex items-center gap-3 rounded-xl border-2 p-4 text-left ${
+                      method === "Bank Transfer"
+                        ? "border-green-600 bg-green-50"
+                        : "border-slate-200 bg-white"
+                    }`}
+                  >
+                    <Building2
+                      size={24}
+                      className={
+                        method === "Bank Transfer"
+                          ? "text-green-600"
+                          : "text-slate-500"
+                      }
+                    />
+                    <span className="text-sm font-semibold text-slate-900">
+                      Bank Transfer
+                    </span>
+                    {method === "Bank Transfer" && (
+                      <CheckCircle2
+                        size={18}
+                        className="ml-auto text-green-600"
+                      />
+                    )}
+                  </button>
                 </div>
               </div>
 
-              {/* CLIENT QR IMAGE */}
+              {/* QR CODE */}
               <div className="rounded-xl border border-slate-200 bg-white p-5">
                 <div className="text-center">
                   <h3 className="text-lg font-semibold text-slate-900">
-                    Scan & Pay
+                    Scan &amp; Pay
                   </h3>
-
                   <p className="mt-1 text-sm text-slate-500">
-                    Scan this QR code with your UPI app.
+                    UPI app se QR scan karke payment karein.
                   </p>
                 </div>
 
@@ -231,149 +308,185 @@ export default function Deposit() {
                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                     <img
                       src="/images/QR.jpeg"
-                      alt="Client UPI payment QR code"
+                      alt="UPI payment QR code"
                       className="h-56 w-56 object-contain"
                     />
                   </div>
                 </div>
 
                 <p className="mt-3 text-center text-xs text-slate-500">
-                  Google Pay, PhonePe or another supported UPI app.
+                  Google Pay, PhonePe ya doosri supported UPI app use karein.
                 </p>
 
-                {/* OPTIONAL UPI ID */}
                 {upiId ? (
                   <div className="mt-5 rounded-lg bg-slate-50 p-4">
-                    <p className="text-xs text-slate-500">
-                      UPI ID
-                    </p>
-
+                    <p className="text-xs text-slate-500">UPI ID</p>
                     <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                       <span className="break-all text-sm font-semibold text-slate-900">
                         {upiId}
                       </span>
-
                       <button
                         type="button"
-                        onClick={handleCopyUPI}
-                        className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        onClick={() => handleCopy(upiId, "UPI ID")}
+                        className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700"
                       >
                         <Copy size={15} />
-                        {copied ? "Copied" : "Copy UPI ID"}
+                        {copiedField === "UPI ID" ? "Copied" : "Copy UPI ID"}
                       </button>
                     </div>
                   </div>
                 ) : (
                   <p className="mt-4 text-center text-xs text-slate-500">
-                    UPI ID display will be available after the client
-                    provides the exact ID.
+                    Verified UPI ID abhi add nahi ki gayi hai.
                   </p>
                 )}
               </div>
 
-              {/* OTHER METHODS - COMING SOON */}
-              <div className="space-y-3">
-                <p className="text-sm font-medium text-slate-700">
-                  Other Payment Methods
+              {/* BANK DETAILS */}
+              <div className="rounded-xl border border-slate-200 bg-white p-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-green-50 text-green-700">
+                    <Building2 size={23} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      Bank Transfer Details
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                      NEFT / IMPS / RTGS
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 space-y-4">
+                  {[
+                    {
+                      label: "Bank Name",
+                      value: bankDetails.name,
+                      field: "Bank name",
+                    },
+                    {
+                      label: "Account Number",
+                      value: bankDetails.accountNumber,
+                      field: "Account number",
+                    },
+                    {
+                      label: "IFSC Code",
+                      value: bankDetails.ifsc,
+                      field: "IFSC code",
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.field}
+                      className="rounded-lg bg-slate-50 p-3"
+                    >
+                      <p className="text-xs text-slate-500">{item.label}</p>
+                      <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                        <p className="break-all font-semibold text-slate-900">
+                          {item.value}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(item.value, item.field)}
+                          className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                        >
+                          <Copy size={14} />
+                          {copiedField === item.field ? "Copied" : "Copy"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="mt-4 text-xs leading-5 text-slate-500">
+                  Live use se pehle account details account holder se confirm
+                  karein. Payment proof aur reference number sambhal kar rakhein.
                 </p>
+              </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <Building2
-                      size={23}
-                      className="text-slate-400"
-                    />
+              {/* PAYMENT REFERENCE */}
+              <div>
+                <label
+                  htmlFor="payment-reference"
+                  className="mb-2 block text-sm font-medium text-slate-700"
+                >
+                  UTR / Payment Reference Number
+                </label>
+                <input
+                  id="payment-reference"
+                  type="text"
+                  value={referenceNumber}
+                  onChange={(e) => setReferenceNumber(e.target.value)}
+                  placeholder="Payment ke baad reference number enter karein"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100"
+                />
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Agar available ho, payment reference enter karein taaki admin
+                  payment verify kar sake.
+                </p>
+              </div>
 
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-700">
-                        Bank Transfer
-                      </p>
-
-                      <p className="mt-1 text-xs text-slate-500">
-                        NEFT / IMPS / RTGS
-                      </p>
-                    </div>
-
-                    <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-semibold text-amber-800">
-                      Coming Soon
-                    </span>
+              {/* CARD: COMING SOON */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-white text-slate-400">
+                    <CreditCard size={23} />
                   </div>
-
-                  <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <CreditCard
-                      size={23}
-                      className="text-slate-400"
-                    />
-
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-700">
-                        Debit / Credit Card
-                      </p>
-
-                      <p className="mt-1 text-xs text-slate-500">
-                        Card payments
-                      </p>
-                    </div>
-
-                    <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-semibold text-amber-800">
-                      Coming Soon
-                    </span>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-slate-700">
+                      Debit / Credit Card
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Card payments
+                    </p>
                   </div>
+                  <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-semibold text-amber-800">
+                    Coming Soon
+                  </span>
                 </div>
               </div>
 
-              {/* CONTINUE BUTTON */}
+              {/* API ERROR */}
+              {error && (
+                <div
+                  role="alert"
+                  className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                >
+                  {error}
+                </div>
+              )}
+
+              {/* SUBMIT */}
               <button
                 type="submit"
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-700"
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <ArrowDownToLine size={18} />
-                Continue to Deposit
-                <ChevronRight size={17} />
+                {loading ? "Submitting Request..." : "Submit Deposit Request"}
+                {!loading && <ChevronRight size={17} />}
               </button>
+
+              <p className="text-xs leading-5 text-slate-500">
+                Request submit karne se payment automatically verify nahi hoti.
+                Admin payment verify karke hi request approve karega.
+              </p>
             </form>
           )}
         </div>
 
-        {/* RIGHT SIDE INFORMATION */}
+        {/* RIGHT SIDE */}
         <div className="space-y-4">
-          {/* REGISTERED BANK */}
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="font-semibold text-slate-900">
-              Registered Bank
-            </h3>
-
-            <div className="mt-4 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-                <Landmark size={19} />
-              </div>
-
-              <div>
-                <p className="text-sm font-medium text-slate-900">
-                  HDFC Bank
-                </p>
-
-                <p className="text-xs text-slate-500">
-                  XXXX XXXX 4582
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* HOW IT WORKS */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="font-semibold text-slate-900">
-              How it works
-            </h3>
+            <h3 className="font-semibold text-slate-900">How it works</h3>
 
             <div className="mt-4 space-y-4">
               <div className="flex gap-3">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-50 text-xs font-bold text-green-600">
                   1
                 </span>
-
                 <p className="text-sm text-slate-600">
-                  Enter the deposit amount.
+                  Amount aur payment method select karein.
                 </p>
               </div>
 
@@ -381,9 +494,8 @@ export default function Deposit() {
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-50 text-xs font-bold text-green-600">
                   2
                 </span>
-
                 <p className="text-sm text-slate-600">
-                  Scan the QR code and make the payment.
+                  Payment karein aur reference number enter karein.
                 </p>
               </div>
 
@@ -391,24 +503,20 @@ export default function Deposit() {
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-50 text-xs font-bold text-green-600">
                   3
                 </span>
-
                 <p className="text-sm text-slate-600">
-                  Keep the payment reference for verification.
+                  Admin payment verify karke request review karega.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* DEMO NOTICE */}
           <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
             <p className="text-sm font-semibold text-blue-900">
-              Demo Mode
+              Payment Verification
             </p>
-
             <p className="mt-1 text-xs leading-5 text-blue-700">
-              QR code is displayed for presentation purposes.
-              This form does not process payments, verify transactions,
-              save deposit requests or update account balances.
+              Deposit request backend mein save hogi. Payment verify hone se
+              pehle wallet balance update nahi hona chahiye.
             </p>
           </div>
         </div>
