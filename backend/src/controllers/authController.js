@@ -1,5 +1,5 @@
-
 const User = require("../models/User");
+const KycDocument = require("../models/KycDocument");
 const ApiError = require("../utils/ApiError");
 const asyncHandler = require("../utils/asyncHandler");
 const generateClientId = require("../utils/generateClientId");
@@ -10,6 +10,8 @@ const {
   isValidMobile,
   normalizeMobile,
 } = require("../utils/validators");
+
+const KYC_DOC_TYPES = ["pan", "aadhaar"];
 
 // --------------------------------------------------
 // POST /api/auth/register
@@ -185,7 +187,7 @@ const getMe = asyncHandler(async (req, res) => {
 // Requires authentication.
 // --------------------------------------------------
 const updateProfile = asyncHandler(async (req, res) => {
-  const { fullName, address, city, state, postalCode } =
+  const { fullName, address, city, state, postalCode, country } =
     req.body || {};
 
   const user = await User.findById(req.user._id);
@@ -208,19 +210,79 @@ const updateProfile = asyncHandler(async (req, res) => {
   }
 
   if (address !== undefined) {
-    user.address = String(address).trim();
+    const cleanAddress = String(address).trim();
+
+    if (cleanAddress.length > 200) {
+      throw new ApiError(
+        400,
+        "Address must be 200 characters or less"
+      );
+    }
+
+    user.address = cleanAddress;
   }
 
   if (city !== undefined) {
-    user.city = String(city).trim();
+    const cleanCity = String(city).trim();
+
+    if (cleanCity.length > 60) {
+      throw new ApiError(400, "City must be 60 characters or less");
+    }
+
+    user.city = cleanCity;
   }
 
   if (state !== undefined) {
-    user.state = String(state).trim();
+    const cleanState = String(state).trim();
+
+    if (cleanState.length > 60) {
+      throw new ApiError(400, "State must be 60 characters or less");
+    }
+
+    user.state = cleanState;
+  }
+
+  if (country !== undefined) {
+    const cleanCountry = String(country).trim();
+
+    if (!cleanCountry) {
+      throw new ApiError(400, "Country is required");
+    }
+
+    if (cleanCountry.length > 60) {
+      throw new ApiError(
+        400,
+        "Country must be 60 characters or less"
+      );
+    }
+
+    user.country = cleanCountry;
   }
 
   if (postalCode !== undefined) {
-    user.postalCode = String(postalCode).trim();
+    const cleanPostal = String(postalCode).trim();
+
+    if (cleanPostal) {
+      const isIndia =
+        String(user.country || "India").trim().toLowerCase() ===
+        "india";
+
+      if (isIndia) {
+        if (!/^[1-9][0-9]{5}$/.test(cleanPostal)) {
+          throw new ApiError(
+            400,
+            "Enter a valid 6-digit PIN code"
+          );
+        }
+      } else if (!/^[A-Za-z0-9 -]{3,10}$/.test(cleanPostal)) {
+        throw new ApiError(
+          400,
+          "Enter a valid postal code (3 to 10 letters or numbers)"
+        );
+      }
+    }
+
+    user.postalCode = cleanPostal;
   }
 
   await user.save();
@@ -291,51 +353,40 @@ const changePassword = asyncHandler(async (req, res) => {
 });
 
 // --------------------------------------------------
+// Helper: client ke documents ka safe summary.
+// Image data ya storage key kabhi nahi bhejte.
+// --------------------------------------------------
+const buildDocumentSummary = async (userId) => {
+  const docs = await KycDocument.find({ user: userId }).select(
+    "docType contentType size uploadedAt"
+  );
+
+  const summary = {
+    pan: { uploaded: false },
+    aadhaar: { uploaded: false },
+  };
+
+  docs.forEach((doc) => {
+    summary[doc.docType] = {
+      uploaded: true,
+      contentType: doc.contentType,
+      size: doc.size,
+      uploadedAt: doc.uploadedAt,
+    };
+  });
+
+  return summary;
+};
+
+// --------------------------------------------------
 // POST /api/auth/kyc
-// Submit masked KYC details only.
-// Never store the full PAN or Aadhaar number here.
+// Multipart upload: fields "pan" and "aadhaar" (images)
+// plus kycPanMasked and kycAadhaarLast4 (text fields).
+// Full PAN / Aadhaar numbers are never accepted or stored.
+// Images are stored privately in the KycDocument model.
+// Resubmission is allowed only after rejection.
 // --------------------------------------------------
 const submitKyc = asyncHandler(async (req, res) => {
-  const { kycPanMasked, kycAadhaarLast4 } = req.body || {};
-
-  const maskedPan = String(kycPanMasked || "")
-    .trim()
-    .toUpperCase();
-
-  const aadhaarLast4 = String(kycAadhaarLast4 || "").trim();
-
-  if (!maskedPan) {
-    throw new ApiError(400, "Masked PAN is required");
-  }
-
-  // Reject a full, unmasked PAN.
-  const fullPanPattern = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
-
-  if (fullPanPattern.test(maskedPan)) {
-    throw new ApiError(
-      400,
-      "Send a masked PAN only, not the full PAN number"
-    );
-  }
-
-  // Require a masked value containing at least one masking character.
-  if (
-    !/^[A-Z0-9*•X-]{5,15}$/.test(maskedPan) ||
-    !/[*•X-]/.test(maskedPan)
-  ) {
-    throw new ApiError(
-      400,
-      "Please provide a valid masked PAN value"
-    );
-  }
-
-  if (!/^\d{4}$/.test(aadhaarLast4)) {
-    throw new ApiError(
-      400,
-      "Only the last 4 Aadhaar digits are required"
-    );
-  }
-
   const user = await User.findById(req.user._id);
 
   if (!user) {
@@ -357,6 +408,73 @@ const submitKyc = asyncHandler(async (req, res) => {
     throw new ApiError(409, "Your KYC is already approved");
   }
 
+  // Browser se sirf masked PAN aur Aadhaar ke aakhri 4 digit aate hain.
+  // Masked PAN ka format: 2 letters + 6 stars + 1 digit + 1 letter.
+  const maskedPan = String(req.body?.kycPanMasked || "")
+    .trim()
+    .toUpperCase();
+
+  const aadhaarLast4 = String(req.body?.kycAadhaarLast4 || "").trim();
+
+  if (!/^[A-Z]{2}\*{6}[0-9][A-Z]$/.test(maskedPan)) {
+    throw new ApiError(400, "A valid masked PAN is required");
+  }
+
+  if (!/^\d{4}$/.test(aadhaarLast4)) {
+    throw new ApiError(
+      400,
+      "The last 4 digits of the Aadhaar number are required"
+    );
+  }
+
+  const files = req.files || {};
+
+  const existing = await KycDocument.find({ user: user._id }).select(
+    "docType"
+  );
+
+  const existingTypes = existing.map((doc) => doc.docType);
+
+  // Har type ke liye nayi image ya pehle se saved image honi chahiye.
+  for (const type of KYC_DOC_TYPES) {
+    const hasNew = Boolean(files[type] && files[type][0]);
+    const hasOld = existingTypes.includes(type);
+
+    if (!hasNew && !hasOld) {
+      throw new ApiError(
+        400,
+        type === "pan"
+          ? "PAN card image is required"
+          : "Aadhaar card image is required"
+      );
+    }
+  }
+
+  // Nayi images save karo. Wahi document update hota hai.
+  for (const type of KYC_DOC_TYPES) {
+    const file = files[type] && files[type][0];
+
+    if (!file) continue;
+
+    await KycDocument.findOneAndUpdate(
+      { user: user._id, docType: type },
+      {
+        $set: {
+          data: file.buffer,
+          contentType: file.mimetype,
+          size: file.buffer.length,
+          uploadedAt: new Date(),
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+        runValidators: true,
+        setDefaultsOnInsert: true,
+      }
+    );
+  }
+
   user.kycPanMasked = maskedPan;
   user.kycAadhaarLast4 = aadhaarLast4;
   user.kycStatus = "pending";
@@ -373,8 +491,60 @@ const submitKyc = asyncHandler(async (req, res) => {
     data: {
       kycStatus: user.kycStatus,
       kycSubmittedAt: user.kycSubmittedAt,
+      documents: await buildDocumentSummary(user._id),
     },
   });
+});
+
+// --------------------------------------------------
+// GET /api/auth/kyc
+// Client apna KYC status aur uploaded documents ka summary dekhta hai.
+// Masked PAN aur Aadhaar ke aakhri 4 digit bhi dikhte hain.
+// --------------------------------------------------
+const getMyKyc = asyncHandler(async (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "KYC status fetched",
+    data: {
+      kycStatus: req.user.kycStatus,
+      kycSubmittedAt: req.user.kycSubmittedAt,
+      kycReviewedAt: req.user.kycReviewedAt,
+      kycRejectionReason: req.user.kycRejectionReason,
+      kycPanMasked: req.user.kycPanMasked,
+      kycAadhaarLast4: req.user.kycAadhaarLast4,
+      documents: await buildDocumentSummary(req.user._id),
+    },
+  });
+});
+
+// --------------------------------------------------
+// GET /api/auth/kyc/document/:type
+// Client sirf apni image dekh sakta hai (preview ke liye).
+// --------------------------------------------------
+const getMyKycDocument = asyncHandler(async (req, res) => {
+  const type = String(req.params.type || "").toLowerCase();
+
+  if (!KYC_DOC_TYPES.includes(type)) {
+    throw new ApiError(400, "Document type must be pan or aadhaar");
+  }
+
+  const doc = await KycDocument.findOne({
+    user: req.user._id,
+    docType: type,
+  }).select("+data contentType");
+
+  if (!doc) {
+    throw new ApiError(404, "Document not found");
+  }
+
+  res.set({
+    "Content-Type": doc.contentType,
+    "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Disposition": "inline",
+  });
+
+  res.status(200).send(doc.data);
 });
 
 module.exports = {
@@ -384,4 +554,6 @@ module.exports = {
   updateProfile,
   changePassword,
   submitKyc,
+  getMyKyc,
+  getMyKycDocument,
 };

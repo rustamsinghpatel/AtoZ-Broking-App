@@ -1,10 +1,17 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { apiRequest } from "../services/api";
+import {
+  apiRequest,
+  getPendingKyc,
+  getAdminKycDocumentBlob,
+  reviewUserKyc,
+  getPendingBankKyc,
+  getAdminBankKycDocumentBlob,
+  reviewBankKyc,
+} from "../services/api";
 
-const menuItems = ["Overview", "Clients", "Deposits"];
+const menuItems = ["Overview", "Clients", "Deposits", "KYC", "Bank KYC"];
 
 function StatusBadge({ status }) {
   const styles = {
@@ -65,22 +72,42 @@ function formatAmount(amount) {
   });
 }
 
+function formatAddress(user) {
+  return [user?.address, user?.city, user?.state, user?.postalCode, user?.country]
+    .filter(Boolean)
+    .join(", ");
+}
+
+const normalizeName = (value) =>
+  String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+
 export default function Admin() {
   const [activeMenu, setActiveMenu] = useState("Overview");
 
   const [clients, setClients] = useState([]);
   const [pendingDeposits, setPendingDeposits] = useState([]);
+  const [pendingKyc, setPendingKyc] = useState([]);
+  const [pendingBank, setPendingBank] = useState([]);
 
   const [clientsLoading, setClientsLoading] = useState(false);
   const [depositsLoading, setDepositsLoading] = useState(false);
+  const [kycLoading, setKycLoading] = useState(false);
+  const [bankLoading, setBankLoading] = useState(false);
 
   const [clientsError, setClientsError] = useState("");
   const [depositsError, setDepositsError] = useState("");
+  const [kycError, setKycError] = useState("");
+  const [bankError, setBankError] = useState("");
   const [actionError, setActionError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
   const [updatingClient, setUpdatingClient] = useState("");
   const [updatingDeposit, setUpdatingDeposit] = useState("");
+  const [updatingKyc, setUpdatingKyc] = useState("");
+  const [updatingBank, setUpdatingBank] = useState("");
+
+  // KYC document popup: { title, url, loading, error } ya null.
+  const [viewer, setViewer] = useState(null);
 
   const { isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
@@ -127,6 +154,39 @@ export default function Admin() {
     }
   }, []);
 
+  // Load pending PAN / Aadhaar KYC requests from the backend.
+  const fetchPendingKyc = useCallback(async () => {
+    setKycLoading(true);
+    setKycError("");
+
+    try {
+      const clientsWithKyc = await getPendingKyc();
+      setPendingKyc(clientsWithKyc || []);
+    } catch (err) {
+      setKycError(
+        err.message || "KYC requests load nahi ho paayi."
+      );
+    } finally {
+      setKycLoading(false);
+    }
+  }, []);
+
+  // Load pending bank KYC requests from the backend.
+  const fetchPendingBank = useCallback(async () => {
+    setBankLoading(true);
+    setBankError("");
+
+    try {
+      setPendingBank((await getPendingBankKyc()) || []);
+    } catch (err) {
+      setBankError(
+        err.message || "Bank KYC requests load nahi ho paayi."
+      );
+    } finally {
+      setBankLoading(false);
+    }
+  }, []);
+
   // Load only the data needed for the selected page.
   useEffect(() => {
     if (!isAuthenticated || user?.role !== "admin") return;
@@ -138,13 +198,32 @@ export default function Admin() {
     if (activeMenu === "Overview" || activeMenu === "Deposits") {
       fetchPendingDeposits();
     }
+
+    if (activeMenu === "Overview" || activeMenu === "KYC") {
+      fetchPendingKyc();
+    }
+
+    if (activeMenu === "Bank KYC") {
+      fetchPendingBank();
+    }
   }, [
     activeMenu,
     isAuthenticated,
     user?.role,
     fetchClients,
     fetchPendingDeposits,
+    fetchPendingKyc,
+    fetchPendingBank,
   ]);
+
+  // Popup band hone ya naya document khulne par purani image memory se hatao.
+  useEffect(() => {
+    const currentUrl = viewer?.url;
+
+    return () => {
+      if (currentUrl) URL.revokeObjectURL(currentUrl);
+    };
+  }, [viewer?.url]);
 
   // Update client account status.
   const handleStatusChange = async (client, nextStatus) => {
@@ -268,6 +347,212 @@ export default function Admin() {
     }
   };
 
+  // Client ka PAN / Aadhaar image securely popup mein kholo.
+  const openKycDocument = async (client, type) => {
+    const label = type === "pan" ? "PAN Card" : "Aadhaar Card";
+
+    setActionError("");
+
+    setViewer({
+      title: `${label} — ${client.fullName} (${client.clientId})`,
+      url: "",
+      loading: true,
+      error: "",
+      key: `${client._id}-${type}-${Date.now()}`,
+    });
+
+    const requestKey = `${client._id}-${type}`;
+
+    try {
+      const blob = await getAdminKycDocumentBlob(client._id, type);
+      const url = URL.createObjectURL(blob);
+
+      setViewer((prev) => {
+        // Agar popup band ho gaya ya doosra document khul gaya, to ye image hatao.
+        if (!prev || !prev.key.startsWith(requestKey)) {
+          URL.revokeObjectURL(url);
+          return prev;
+        }
+
+        return { ...prev, url, loading: false };
+      });
+    } catch (err) {
+      setViewer((prev) => {
+        if (!prev || !prev.key.startsWith(requestKey)) return prev;
+
+        return {
+          ...prev,
+          loading: false,
+          error: err.message || "Document load nahi ho saka.",
+        };
+      });
+    }
+  };
+
+  // Client ka bank proof image securely popup mein kholo. :id = user ID.
+  const openBankDocument = async (item) => {
+    const userId = item.user?._id;
+
+    if (!userId) return;
+
+    setActionError("");
+
+    setViewer({
+      title: `Bank Proof — ${item.user?.fullName || ""} (${item.user?.clientId || ""})`,
+      url: "",
+      loading: true,
+      error: "",
+      key: `${userId}-bank-${Date.now()}`,
+    });
+
+    const requestKey = `${userId}-bank`;
+
+    try {
+      const blob = await getAdminBankKycDocumentBlob(userId);
+      const url = URL.createObjectURL(blob);
+
+      setViewer((prev) => {
+        if (!prev || !prev.key.startsWith(requestKey)) {
+          URL.revokeObjectURL(url);
+          return prev;
+        }
+
+        return { ...prev, url, loading: false };
+      });
+    } catch (err) {
+      setViewer((prev) => {
+        if (!prev || !prev.key.startsWith(requestKey)) return prev;
+
+        return {
+          ...prev,
+          loading: false,
+          error: err.message || "Document load nahi ho saka.",
+        };
+      });
+    }
+  };
+
+  const closeViewer = () => setViewer(null);
+
+  // Approve or reject a pending PAN / Aadhaar KYC request.
+  const handleKycReview = async (client, nextStatus) => {
+    setActionError("");
+    setSuccessMessage("");
+
+    let reason = "";
+
+    if (nextStatus === "rejected") {
+      const enteredReason = window.prompt(
+        `KYC reject karne ka reason likhein (max 300 characters).\nClient: ${client.fullName} (${client.clientId})\nYe reason client ko dikhega.`
+      );
+
+      if (enteredReason === null) return;
+
+      reason = enteredReason.trim();
+
+      if (!reason) {
+        setActionError("KYC reject karne ke liye reason zaroori hai.");
+        return;
+      }
+
+      if (reason.length > 300) {
+        setActionError("Reason 300 characters ya usse kam hona chahiye.");
+        return;
+      }
+    }
+
+    const confirmed = window.confirm(
+      nextStatus === "approved"
+        ? `Kya aapne ${client.clientId} ke PAN aur Aadhaar documents check kar liye? KYC approve karna hai?`
+        : `Kya aap ${client.clientId} ka KYC reject karna chahte hain?`
+    );
+
+    if (!confirmed) return;
+
+    setUpdatingKyc(client._id);
+
+    try {
+      const result = await reviewUserKyc(client._id, nextStatus, reason);
+
+      setSuccessMessage(
+        result.message ||
+          (nextStatus === "approved"
+            ? "KYC approve ho gaya."
+            : "KYC reject ho gaya.")
+      );
+
+      await fetchPendingKyc();
+    } catch (err) {
+      setActionError(
+        err.message || "KYC review complete nahi ho saka."
+      );
+    } finally {
+      setUpdatingKyc("");
+    }
+  };
+
+  // Approve or reject a pending bank KYC request.
+  const handleBankReview = async (item, nextStatus) => {
+    const userId = item.user?._id;
+
+    if (!userId) return;
+
+    setActionError("");
+    setSuccessMessage("");
+
+    const who = `${item.user?.fullName || ""} (${item.user?.clientId || ""})`;
+    let reason = "";
+
+    if (nextStatus === "rejected") {
+      const entered = window.prompt(
+        `Bank KYC reject karne ka reason likhein (max 300 characters).\nClient: ${who}\nYe reason client ko dikhega.`
+      );
+
+      if (entered === null) return;
+
+      reason = entered.trim();
+
+      if (!reason) {
+        setActionError("Bank KYC reject karne ke liye reason zaroori hai.");
+        return;
+      }
+
+      if (reason.length > 300) {
+        setActionError("Reason 300 characters ya usse kam hona chahiye.");
+        return;
+      }
+    }
+
+    const confirmed = window.confirm(
+      nextStatus === "approved"
+        ? `Kya aapne ${who} ka bank proof check karke details match kar li? Approve karna hai?`
+        : `Kya aap ${who} ka bank KYC reject karna chahte hain?`
+    );
+
+    if (!confirmed) return;
+
+    setUpdatingBank(item._id);
+
+    try {
+      const result = await reviewBankKyc(userId, nextStatus, reason);
+
+      setSuccessMessage(
+        result.message ||
+          (nextStatus === "approved"
+            ? "Bank KYC approve ho gaya."
+            : "Bank KYC reject ho gaya.")
+      );
+
+      await fetchPendingBank();
+    } catch (err) {
+      setActionError(
+        err.message || "Bank KYC review complete nahi ho saka."
+      );
+    } finally {
+      setUpdatingBank("");
+    }
+  };
+
   const handleLogout = () => {
     logout();
     navigate("/login", { replace: true });
@@ -357,6 +642,8 @@ export default function Admin() {
               {item === "Overview" && "▦  "}
               {item === "Clients" && "👥  "}
               {item === "Deposits" && "₹  "}
+              {item === "KYC" && "🪪  "}
+              {item === "Bank KYC" && "🏦  "}
               {item}
             </button>
           ))}
@@ -367,7 +654,7 @@ export default function Admin() {
             Admin Workspace
           </p>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            Manage client access and review deposit requests.
+            Manage client access, review deposit requests and verify KYC and bank documents.
           </p>
         </div>
 
@@ -390,7 +677,7 @@ export default function Admin() {
               {activeMenu}
             </h2>
             <p className="mt-2 text-sm text-slate-500">
-              Manage your client accounts and deposit approvals.
+              Manage your client accounts, deposit approvals and KYC reviews.
             </p>
           </div>
 
@@ -421,7 +708,7 @@ export default function Admin() {
         {/* Overview */}
         {activeMenu === "Overview" && (
           <>
-            <section className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <section className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
               <StatCard
                 label="Total Clients"
                 value={clientsLoading ? "…" : clients.length}
@@ -446,9 +733,15 @@ export default function Admin() {
                 description="Requests waiting for review"
                 icon="₹"
               />
+              <StatCard
+                label="Pending KYC"
+                value={kycLoading ? "…" : pendingKyc.length}
+                description="Documents waiting for review"
+                icon="🪪"
+              />
             </section>
 
-            {(clientsError || depositsError) && (
+            {(clientsError || depositsError || kycError) && (
               <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4">
                 <p className="font-semibold text-red-800">
                   Kuch dashboard data load nahi hua.
@@ -461,6 +754,11 @@ export default function Admin() {
                 {depositsError && (
                   <p className="mt-2 text-sm text-red-700">
                     Deposits: {depositsError}
+                  </p>
+                )}
+                {kycError && (
+                  <p className="mt-2 text-sm text-red-700">
+                    KYC: {kycError}
                   </p>
                 )}
               </div>
@@ -916,7 +1214,439 @@ export default function Admin() {
               )}
           </section>
         )}
+
+        {/* KYC (PAN + Aadhaar) */}
+        {activeMenu === "KYC" && (
+          <section className="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 p-5 sm:p-6">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900">
+                  KYC Requests
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Check PAN and Aadhaar documents, then approve or reject.
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Pending requests: {pendingKyc.length}
+                </p>
+              </div>
+
+              <button
+                onClick={fetchPendingKyc}
+                disabled={kycLoading}
+                className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {kycLoading ? "Refreshing…" : "Refresh Requests"}
+              </button>
+            </div>
+
+            <div className="border-b border-amber-100 bg-amber-50 px-5 py-3 text-sm leading-6 text-amber-800">
+              Ye documents sensitive identity information hain. Sirf KYC verification ke liye dekhein, kisi ke saath share na karein aur screenshot ya download na karein.
+            </div>
+
+            {kycLoading && (
+              <p className="p-6 text-sm text-slate-500">
+                KYC requests load ho rahi hain…
+              </p>
+            )}
+
+            {!kycLoading && kycError && (
+              <div className="m-5 rounded-xl border border-red-200 bg-red-50 p-4">
+                <p className="font-semibold text-red-800">
+                  KYC requests load nahi hui.
+                </p>
+                <p className="mt-2 text-sm text-red-700">{kycError}</p>
+                <button
+                  onClick={fetchPendingKyc}
+                  className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                >
+                  Try Again
+                </button>
+              </div>
+            )}
+
+            {!kycLoading && !kycError && pendingKyc.length === 0 && (
+              <div className="p-10 text-center">
+                <div className="text-4xl" aria-hidden="true">✓</div>
+                <h4 className="mt-3 font-semibold text-slate-800">
+                  No pending KYC
+                </h4>
+                <p className="mt-2 text-sm text-slate-500">
+                  Jab koi client KYC submit karega, woh yahan dikhega.
+                </p>
+              </div>
+            )}
+
+            {!kycLoading && !kycError && pendingKyc.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-5 py-4">Client</th>
+                      <th className="px-5 py-4">Identity</th>
+                      <th className="px-5 py-4">Documents</th>
+                      <th className="px-5 py-4">Submitted</th>
+                      <th className="px-5 py-4">Status</th>
+                      <th className="px-5 py-4">Review Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {pendingKyc.map((client) => {
+                      const isUpdating = updatingKyc === client._id;
+                      const hasPan = Boolean(client.documents?.pan);
+                      const hasAadhaar = Boolean(client.documents?.aadhaar);
+                      const bothUploaded = hasPan && hasAadhaar;
+
+                      return (
+                        <tr
+                          key={client._id}
+                          className="align-top hover:bg-slate-50"
+                        >
+                          <td className="min-w-44 px-5 py-4">
+                            <p className="font-semibold text-slate-800">
+                              {client.fullName || "—"}
+                            </p>
+                            <p className="mt-1 text-xs text-cyan-700">
+                              {client.clientId || "—"}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {client.email || ""}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {client.mobile || ""}
+                            </p>
+                          </td>
+
+                          <td className="min-w-44 px-5 py-4">
+                            <p className="text-xs text-slate-500">PAN</p>
+                            <p className="font-medium text-slate-800">
+                              {client.kycPanMasked || "—"}
+                            </p>
+                            <p className="mt-2 text-xs text-slate-500">
+                              Aadhaar
+                            </p>
+                            <p className="font-medium text-slate-800">
+                              {client.kycAadhaarLast4
+                                ? `XXXX-XXXX-${client.kycAadhaarLast4}`
+                                : "—"}
+                            </p>
+                          </td>
+
+                          <td className="min-w-44 px-5 py-4">
+                            <div className="flex flex-col gap-2">
+                              <button
+                                disabled={!hasPan}
+                                onClick={() => openKycDocument(client, "pan")}
+                                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {hasPan ? "View PAN" : "PAN missing"}
+                              </button>
+                              <button
+                                disabled={!hasAadhaar}
+                                onClick={() =>
+                                  openKycDocument(client, "aadhaar")
+                                }
+                                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {hasAadhaar ? "View Aadhaar" : "Aadhaar missing"}
+                              </button>
+                            </div>
+                          </td>
+
+                          <td className="whitespace-nowrap px-5 py-4 text-slate-600">
+                            {formatDate(client.kycSubmittedAt)}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <StatusBadge status={client.kycStatus} />
+                          </td>
+
+                          <td className="min-w-48 px-5 py-4">
+                            <div className="flex flex-col gap-2">
+                              <button
+                                disabled={isUpdating || !bothUploaded}
+                                onClick={() =>
+                                  handleKycReview(client, "approved")
+                                }
+                                className="rounded-lg bg-emerald-600 px-3 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {isUpdating ? "Processing…" : "✓ Approve KYC"}
+                              </button>
+                              <button
+                                disabled={isUpdating}
+                                onClick={() =>
+                                  handleKycReview(client, "rejected")
+                                }
+                                className="rounded-lg border border-red-200 px-3 py-2.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                Reject
+                              </button>
+                              {!bothUploaded && (
+                                <p className="text-xs text-red-600">
+                                  Dono documents upload hone par hi approve ho sakta hai.
+                                </p>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Bank KYC */}
+        {activeMenu === "Bank KYC" && (
+          <section className="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 p-5 sm:p-6">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900">
+                  Bank KYC Requests
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Bank proof image se account holder, bank, IFSC aur account number match karein.
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Pending requests: {pendingBank.length}
+                </p>
+              </div>
+
+              <button
+                onClick={fetchPendingBank}
+                disabled={bankLoading}
+                className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {bankLoading ? "Refreshing…" : "Refresh Requests"}
+              </button>
+            </div>
+
+            <div className="border-b border-amber-100 bg-amber-50 px-5 py-3 text-sm leading-6 text-amber-800">
+              Bank details sensitive hain. Sirf verification ke liye dekhein, kisi ke saath share na karein aur screenshot ya download na karein.
+            </div>
+
+            {bankLoading && (
+              <p className="p-6 text-sm text-slate-500">
+                Bank KYC requests load ho rahi hain…
+              </p>
+            )}
+
+            {!bankLoading && bankError && (
+              <div className="m-5 rounded-xl border border-red-200 bg-red-50 p-4">
+                <p className="font-semibold text-red-800">
+                  Bank KYC requests load nahi hui.
+                </p>
+                <p className="mt-2 text-sm text-red-700">{bankError}</p>
+                <button
+                  onClick={fetchPendingBank}
+                  className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                >
+                  Try Again
+                </button>
+              </div>
+            )}
+
+            {!bankLoading && !bankError && pendingBank.length === 0 && (
+              <div className="p-10 text-center">
+                <div className="text-4xl" aria-hidden="true">✓</div>
+                <h4 className="mt-3 font-semibold text-slate-800">
+                  No pending bank KYC
+                </h4>
+                <p className="mt-2 text-sm text-slate-500">
+                  Jab koi client bank details submit karega, woh yahan dikhengi.
+                </p>
+              </div>
+            )}
+
+            {!bankLoading && !bankError && pendingBank.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-5 py-4">Client</th>
+                      <th className="px-5 py-4">Bank Details</th>
+                      <th className="px-5 py-4">Proof</th>
+                      <th className="px-5 py-4">Submitted</th>
+                      <th className="px-5 py-4">Status</th>
+                      <th className="px-5 py-4">Review Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {pendingBank.map((item) => {
+                      const isUpdating = updatingBank === item._id;
+                      const address = formatAddress(item.user);
+                      const nameMatches =
+                        normalizeName(item.accountHolder) ===
+                        normalizeName(item.user?.fullName);
+
+                      return (
+                        <tr
+                          key={item._id}
+                          className="align-top hover:bg-slate-50"
+                        >
+                          <td className="min-w-52 px-5 py-4">
+                            <p className="font-semibold text-slate-800">
+                              {item.user?.fullName || "—"}
+                            </p>
+                            <p className="mt-1 text-xs text-cyan-700">
+                              {item.user?.clientId || "—"}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {item.user?.email || ""}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {item.user?.mobile || ""}
+                            </p>
+                            <p className="mt-2 max-w-52 text-xs text-slate-500">
+                              Address: {address || "Not provided"}
+                            </p>
+                          </td>
+
+                          <td className="min-w-56 px-5 py-4">
+                            <p className="text-xs text-slate-500">
+                              Account holder
+                            </p>
+                            <p className="font-medium text-slate-800">
+                              {item.accountHolder || "—"}
+                            </p>
+                            <p
+                              className={`mt-1 text-xs font-medium ${
+                                nameMatches
+                                  ? "text-emerald-700"
+                                  : "text-amber-700"
+                              }`}
+                            >
+                              {nameMatches
+                                ? "✓ Matches client name"
+                                : "⚠ Differs from client name"}
+                            </p>
+
+                            <p className="mt-2 text-xs text-slate-500">Bank</p>
+                            <p className="font-medium text-slate-800">
+                              {item.bankName || "—"}
+                            </p>
+
+                            <p className="mt-2 text-xs text-slate-500">
+                              Account number
+                            </p>
+                            <p className="font-medium text-slate-800">
+                              {item.accountNumberMasked || "—"}
+                            </p>
+
+                            <p className="mt-2 text-xs text-slate-500">IFSC</p>
+                            <p className="font-medium tracking-wide text-slate-800">
+                              {item.ifsc || "—"}
+                            </p>
+                          </td>
+
+                          <td className="min-w-36 px-5 py-4">
+                            <button
+                              disabled={!item.documentUploaded}
+                              onClick={() => openBankDocument(item)}
+                              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {item.documentUploaded
+                                ? "View Bank Proof"
+                                : "Proof missing"}
+                            </button>
+                          </td>
+
+                          <td className="whitespace-nowrap px-5 py-4 text-slate-600">
+                            {formatDate(item.submittedAt)}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <StatusBadge status={item.status} />
+                          </td>
+
+                          <td className="min-w-48 px-5 py-4">
+                            <div className="flex flex-col gap-2">
+                              <button
+                                disabled={isUpdating || !item.documentUploaded}
+                                onClick={() =>
+                                  handleBankReview(item, "approved")
+                                }
+                                className="rounded-lg bg-emerald-600 px-3 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {isUpdating ? "Processing…" : "✓ Approve"}
+                              </button>
+                              <button
+                                disabled={isUpdating}
+                                onClick={() =>
+                                  handleBankReview(item, "rejected")
+                                }
+                                className="rounded-lg border border-red-200 px-3 py-2.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
       </main>
+
+      {/* Document popup (PAN, Aadhaar and bank proof) */}
+      {viewer && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="KYC document"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4"
+          onClick={closeViewer}
+        >
+          <div
+            className="w-full max-w-3xl rounded-2xl bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-base font-semibold text-slate-900">
+                {viewer.title}
+              </h3>
+              <button
+                onClick={closeViewer}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 flex min-h-64 items-center justify-center overflow-auto rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
+              {viewer.loading && (
+                <p className="text-sm text-slate-500">
+                  Document load ho raha hai…
+                </p>
+              )}
+
+              {!viewer.loading && viewer.error && (
+                <p className="text-sm text-red-600">{viewer.error}</p>
+              )}
+
+              {!viewer.loading && !viewer.error && viewer.url && (
+                <img
+                  src={viewer.url}
+                  alt={viewer.title}
+                  className="max-h-[70vh] max-w-full object-contain"
+                  onContextMenu={(e) => e.preventDefault()}
+                  draggable={false}
+                />
+              )}
+            </div>
+
+            <p className="mt-3 text-xs text-slate-500">
+              Ye image sirf is popup mein dikhti hai aur band karte hi hat jaati hai.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

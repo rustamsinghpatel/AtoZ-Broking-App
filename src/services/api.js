@@ -6,33 +6,33 @@
  * - Authentication / current user
  * - Profile update
  * - Password change
- * - KYC submission
- * - Admin pending KYC / review
+ * - PAN / Aadhaar KYC submission and review
+ * - Bank KYC submission and admin review
+ * - Secure KYC document viewing
+ * - Wallet balance and deposit/withdrawal history
  *
  * TEMPORARY MOCK DATA:
  * - Holdings
  * - Portfolio
- * - Transactions
  * - Reports
  * - Notifications
  */
 
 import { mockHoldings, mockPerformance } from "../data/mockPortfolio";
-import {
-  mockTransactions,
-  mockReports,
-} from "../data/mockTransactions";
+import { mockReports } from "../data/mockTransactions";
 import { mockNotifications } from "../data/mockNotifications";
 
-// --------------------------------------------------
-// 1. Backend URL
-// --------------------------------------------------
+// ==================================================
+// 1. BACKEND URL
+// ==================================================
 
 const API_URL = "https://atoz-broking-app.onrender.com";
+// Local testing ke liye zarurat par:
+// const API_URL = "http://localhost:5000";
 
-// --------------------------------------------------
-// 2. Get saved login token
-// --------------------------------------------------
+// ==================================================
+// 2. GET SAVED LOGIN TOKEN
+// ==================================================
 
 const getToken = () => {
   const session =
@@ -50,13 +50,16 @@ const getToken = () => {
   }
 };
 
-// --------------------------------------------------
-// 3. Common API request helper
-// Used by authentication, Admin and Signup APIs.
-// --------------------------------------------------
+// ==================================================
+// 3. COMMON API REQUEST HELPER
+// ==================================================
 
 export const apiRequest = async (endpoint, options = {}) => {
   const token = getToken();
+
+  const isFormData =
+    typeof FormData !== "undefined" &&
+    options.body instanceof FormData;
 
   let response;
 
@@ -64,12 +67,16 @@ export const apiRequest = async (endpoint, options = {}) => {
     response = await fetch(`${API_URL}${endpoint}`, {
       ...options,
       headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(isFormData
+          ? {}
+          : { "Content-Type": "application/json" }),
+        ...(token
+          ? { Authorization: `Bearer ${token}` }
+          : {}),
         ...(options.headers || {}),
       },
     });
-  } catch (error) {
+  } catch {
     throw new Error(
       "Unable to connect to the server. Check your internet connection or backend availability."
     );
@@ -94,18 +101,56 @@ export const apiRequest = async (endpoint, options = {}) => {
   return result;
 };
 
-// --------------------------------------------------
-// 4. Utility for temporary mock APIs
-// --------------------------------------------------
+// ==================================================
+// 4. PRIVATE IMAGE HELPER
+// ==================================================
+
+const fetchPrivateImage = async (endpoint) => {
+  const token = getToken();
+
+  let response;
+
+  try {
+    response = await fetch(`${API_URL}${endpoint}`, {
+      headers: token
+        ? { Authorization: `Bearer ${token}` }
+        : {},
+      cache: "no-store",
+    });
+  } catch {
+    throw new Error(
+      "Unable to connect to the server. Check your internet connection or backend availability."
+    );
+  }
+
+  if (!response.ok) {
+    let message = `Request failed (${response.status}).`;
+
+    try {
+      const result = await response.json();
+      message = result.message || message;
+    } catch {
+      // Default error message rahega.
+    }
+
+    throw new Error(message);
+  }
+
+  return response.blob();
+};
+
+// ==================================================
+// 5. TEMPORARY MOCK API HELPER
+// ==================================================
 
 const delay = (data, ms = 600) =>
   new Promise((resolve) =>
     setTimeout(() => resolve(structuredClone(data)), ms)
   );
 
-// --------------------------------------------------
-// 5. Portfolio calculation helper
-// --------------------------------------------------
+// ==================================================
+// 6. PORTFOLIO CALCULATION HELPER
+// ==================================================
 
 const enrich = (holding) => {
   const invested = holding.qty * holding.avg;
@@ -123,16 +168,18 @@ const enrich = (holding) => {
 };
 
 // ==================================================
-// 6. REAL BACKEND API
+// 7. AUTHENTICATION AND PROFILE APIs
 // ==================================================
 
 // GET /api/auth/me
+
 export const getUser = async () => {
   const result = await apiRequest("/api/auth/me");
   return result.data.user;
 };
 
 // PATCH /api/auth/profile
+
 export const updateUserProfile = async (profileData) => {
   const result = await apiRequest("/api/auth/profile", {
     method: "PATCH",
@@ -143,6 +190,7 @@ export const updateUserProfile = async (profileData) => {
 };
 
 // PATCH /api/auth/password
+
 export const changeUserPassword = async (passwordData) => {
   return apiRequest("/api/auth/password", {
     method: "PATCH",
@@ -150,23 +198,63 @@ export const changeUserPassword = async (passwordData) => {
   });
 };
 
+// ==================================================
+// 8. PAN / AADHAAR KYC APIs
+// ==================================================
+
+// GET /api/auth/kyc
+
+export const getMyKyc = async () => {
+  const result = await apiRequest("/api/auth/kyc");
+  return result.data;
+};
+
 // POST /api/auth/kyc
-// Send masked PAN and Aadhaar last four digits only.
-export const submitUserKyc = async (kycData) => {
+
+export const submitUserKyc = async (formData) => {
   return apiRequest("/api/auth/kyc", {
     method: "POST",
-    body: JSON.stringify(kycData),
+    body: formData,
   });
 };
 
+// GET /api/auth/kyc/document/:type
+
+export const getMyKycDocumentBlob = async (type) => {
+  if (!["pan", "aadhaar"].includes(type)) {
+    throw new Error("Document type must be pan or aadhaar.");
+  }
+
+  return fetchPrivateImage(
+    `/api/auth/kyc/document/${encodeURIComponent(type)}`
+  );
+};
+
 // GET /api/admin/kyc/pending
+
 export const getPendingKyc = async () => {
   const result = await apiRequest("/api/admin/kyc/pending");
   return result.data.clients;
 };
 
+// GET /api/admin/kyc/:id/document/:type
+
+export const getAdminKycDocumentBlob = async (userId, type) => {
+  if (!userId) {
+    throw new Error("User ID is required to view a KYC document.");
+  }
+
+  if (!["pan", "aadhaar"].includes(type)) {
+    throw new Error("Document type must be pan or aadhaar.");
+  }
+
+  return fetchPrivateImage(
+    `/api/admin/kyc/${encodeURIComponent(userId)}/document/${encodeURIComponent(type)}`
+  );
+};
+
 // PATCH /api/admin/kyc/:id/review
-// userId must be the MongoDB _id expected by the backend route.
+
 export const reviewUserKyc = async (
   userId,
   status,
@@ -186,15 +274,86 @@ export const reviewUserKyc = async (
 };
 
 // ==================================================
-// 7. TEMPORARY MOCK APIs
-// These are not connected to the backend yet.
+// 9. BANK KYC APIs
 // ==================================================
 
-// Temporary holdings data
+// GET /api/auth/bank-kyc
+
+export const getMyBankKyc = async () => {
+  const result = await apiRequest("/api/auth/bank-kyc");
+  return result.data.bankKyc;
+};
+
+// POST /api/auth/bank-kyc
+
+export const submitBankKyc = async (formData) => {
+  return apiRequest("/api/auth/bank-kyc", {
+    method: "POST",
+    body: formData,
+  });
+};
+
+// GET /api/auth/bank-kyc/document
+
+export const getMyBankKycDocumentBlob = async () => {
+  return fetchPrivateImage("/api/auth/bank-kyc/document");
+};
+
+// GET /api/admin/bank-kyc/pending
+
+export const getPendingBankKyc = async () => {
+  const result = await apiRequest("/api/admin/bank-kyc/pending");
+  return result.data?.requests || [];
+};
+
+// GET /api/admin/bank-kyc/:id/document
+
+export const getAdminBankKycDocumentBlob = async (userId) => {
+  if (!userId) {
+    throw new Error("User ID is required to view bank proof.");
+  }
+
+  return fetchPrivateImage(
+    `/api/admin/bank-kyc/${encodeURIComponent(userId)}/document`
+  );
+};
+
+// PATCH /api/admin/bank-kyc/:id/review
+
+export const reviewBankKyc = async (
+  userId,
+  status,
+  reason = ""
+) => {
+  if (!userId) {
+    throw new Error("User ID is required to review bank KYC.");
+  }
+
+  if (!["approved", "rejected"].includes(status)) {
+    throw new Error("Status must be approved or rejected.");
+  }
+
+  if (status === "rejected" && !reason.trim()) {
+    throw new Error("Rejection reason is required.");
+  }
+
+  return apiRequest(
+    `/api/admin/bank-kyc/${encodeURIComponent(userId)}/review`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ status, reason }),
+    }
+  );
+};
+
+// ==================================================
+// 10. TEMPORARY HOLDINGS AND PORTFOLIO APIs
+// NOTE: Ye abhi mock data use karte hain.
+// ==================================================
+
 export const getHoldings = async () =>
   delay(mockHoldings.map(enrich));
 
-// Temporary portfolio summary
 export const getPortfolio = async () => {
   const holdings = mockHoldings.map(enrich);
 
@@ -228,11 +387,8 @@ export const getPortfolio = async () => {
       todayChange: Math.round(current * 0.0045),
       todayPct: 0.45,
     },
-
     holdings,
-
     performance: mockPerformance,
-
     allocation: Object.entries(byType).map(([name, value]) => ({
       name,
       value,
@@ -240,21 +396,37 @@ export const getPortfolio = async () => {
   });
 };
 
-// Temporary transactions data
-export const getTransactions = async () =>
-  delay(mockTransactions);
+// ==================================================
+// 11. REAL WALLET AND TRANSACTION APIs
+// GET /api/funds/me
+// ==================================================
 
-// Temporary reports data
+export const getMyFunds = async () => {
+  const response = await apiRequest("/api/funds/me");
+  return response.data;
+};
+
+// Real deposit/withdrawal history only.
+// Fake Buy/Sell entries will not be returned by this function.
+
+export const getTransactions = async () => {
+  const funds = await getMyFunds();
+  return funds.transactions;
+};
+
+// ==================================================
+// 12. TEMPORARY MOCK REPORTS
+// ==================================================
+
 export const getReports = async () =>
   delay(mockReports, 300);
 
 // ==================================================
-// 8. TEMPORARY MOCK NOTIFICATIONS
+// 13. TEMPORARY MOCK NOTIFICATIONS
 // ==================================================
 
-const READ_KEY = "a2z_read_notifications";
+const READ_KEY = "aTOz_read_notifications";
 
-// Get IDs of notifications already marked as read.
 const readIds = () => {
   try {
     return JSON.parse(
@@ -265,7 +437,6 @@ const readIds = () => {
   }
 };
 
-// Temporary notifications list
 export const getNotifications = async () =>
   delay(
     mockNotifications.map((notification) => ({
@@ -277,7 +448,6 @@ export const getNotifications = async () =>
     300
   );
 
-// Mark notifications as read in browser storage.
 export const markNotificationsRead = async (ids) => {
   const existingIds = readIds();
 

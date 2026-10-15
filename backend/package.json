@@ -10,7 +10,12 @@
   "engines": {
     "node": ">=18"
   },
-  "keywords": ["a2z-broking", "express", "mongodb", "jwt"],
+  "keywords": [
+    "a2z-broking",
+    "express",
+    "mongodb",
+    "jwt"
+  ],
   "license": "ISC",
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -19,7 +24,8 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.5.1",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "multer": "^2.4.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"

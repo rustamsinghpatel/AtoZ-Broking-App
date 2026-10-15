@@ -139,7 +139,7 @@ export default function Login() {
                   Portfolio Value
                 </p>
                 <p className="mt-1 text-2xl font-semibold">
-                  ₹9,21,500
+                  ₹0
                 </p>
               </div>
 

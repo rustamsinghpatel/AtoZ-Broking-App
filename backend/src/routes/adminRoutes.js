@@ -1,4 +1,3 @@
-
 const express = require("express");
 
 const {
@@ -14,7 +13,14 @@ const {
   reviewDeposit,
   getPendingKyc,
   reviewKyc,
+  getKycDocument,
 } = require("../controllers/adminController");
+
+const {
+  getPendingBankKyc,
+  getAdminBankKycDocument,
+  reviewBankKyc,
+} = require("../controllers/bankKycController");
 
 const router = express.Router();
 
@@ -154,6 +160,18 @@ router.get(
 );
 
 // ==================================================
+// GET /api/admin/kyc/:id/document/:type
+// Admin client ka PAN/Aadhaar image securely dekh sakta hai.
+// type = pan ya aadhaar. Sirf admin, public URL nahi.
+// ==================================================
+router.get(
+  "/kyc/:id/document/:type",
+  protect,
+  adminOnly,
+  getKycDocument
+);
+
+// ==================================================
 // PATCH /api/admin/kyc/:id/review
 // KYC approve ya reject karna
 // ==================================================
@@ -162,6 +180,40 @@ router.patch(
   protect,
   adminOnly,
   reviewKyc
+);
+
+// ==================================================
+// GET /api/admin/bank-kyc/pending
+// Admin ke pending bank KYC requests
+// ==================================================
+router.get(
+  "/bank-kyc/pending",
+  protect,
+  adminOnly,
+  getPendingBankKyc
+);
+
+// ==================================================
+// GET /api/admin/bank-kyc/:id/document
+// Admin client ka bank proof securely dekh sakta hai.
+// :id = user ID. Sirf admin, public URL nahi.
+// ==================================================
+router.get(
+  "/bank-kyc/:id/document",
+  protect,
+  adminOnly,
+  getAdminBankKycDocument
+);
+
+// ==================================================
+// PATCH /api/admin/bank-kyc/:id/review
+// Bank KYC approve ya reject karna
+// ==================================================
+router.patch(
+  "/bank-kyc/:id/review",
+  protect,
+  adminOnly,
+  reviewBankKyc
 );
 
 module.exports = router;

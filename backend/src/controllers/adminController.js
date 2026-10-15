@@ -1,8 +1,10 @@
-
 const mongoose = require("mongoose");
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
+const KycDocument = require("../models/KycDocument");
 const ApiError = require("../utils/ApiError");
+
+const KYC_DOC_TYPES = ["pan", "aadhaar"];
 
 // ======================================================
 // GET /api/admin/deposits/pending
@@ -146,6 +148,7 @@ const reviewDeposit = async (req, res, next) => {
 // GET /api/admin/kyc/pending
 // Admin pending KYC requests dekh sakta hai.
 // Sensitive full PAN/Aadhaar return nahi kiye jaate.
+// Documents ka sirf "uploaded hai ya nahi" bheja jaata hai.
 // ======================================================
 const getPendingKyc = async (req, res, next) => {
   try {
@@ -159,10 +162,39 @@ const getPendingKyc = async (req, res, next) => {
       .sort({ kycSubmittedAt: 1 })
       .lean();
 
+    const ids = clients.map((client) => client._id);
+
+    // Image data nahi laate, sirf kaun sa document hai.
+    const docs = ids.length
+      ? await KycDocument.find({ user: { $in: ids } })
+          .select("user docType")
+          .lean()
+      : [];
+
+    const docsByUser = {};
+
+    docs.forEach((doc) => {
+      const key = String(doc.user);
+
+      if (!docsByUser[key]) {
+        docsByUser[key] = { pan: false, aadhaar: false };
+      }
+
+      docsByUser[key][doc.docType] = true;
+    });
+
+    const result = clients.map((client) => ({
+      ...client,
+      documents: docsByUser[String(client._id)] || {
+        pan: false,
+        aadhaar: false,
+      },
+    }));
+
     return res.status(200).json({
       success: true,
-      count: clients.length,
-      data: { clients },
+      count: result.length,
+      data: { clients: result },
     });
   } catch (error) {
     next(error);
@@ -172,6 +204,7 @@ const getPendingKyc = async (req, res, next) => {
 // ======================================================
 // PATCH /api/admin/kyc/:id/review
 // Admin KYC approve ya reject karega.
+// Approve tabhi hoga jab PAN aur Aadhaar dono images hon.
 // ======================================================
 const reviewKyc = async (req, res, next) => {
   try {
@@ -193,6 +226,13 @@ const reviewKyc = async (req, res, next) => {
       );
     }
 
+    if (cleanReason.length > 300) {
+      throw new ApiError(
+        400,
+        "Reason must be 300 characters or less."
+      );
+    }
+
     if (!mongoose.isValidObjectId(req.params.id)) {
       throw new ApiError(400, "Invalid client ID.");
     }
@@ -211,6 +251,21 @@ const reviewKyc = async (req, res, next) => {
         409,
         "This KYC request is not pending."
       );
+    }
+
+    // Approve se pehle dono documents hone zaroori hain.
+    if (status === "approved") {
+      const uploadedCount = await KycDocument.countDocuments({
+        user: client._id,
+        docType: { $in: KYC_DOC_TYPES },
+      });
+
+      if (uploadedCount < KYC_DOC_TYPES.length) {
+        throw new ApiError(
+          400,
+          "Both PAN and Aadhaar images must be uploaded before approval."
+        );
+      }
     }
 
     client.kycStatus = status;
@@ -237,6 +292,56 @@ const reviewKyc = async (req, res, next) => {
 };
 
 // ======================================================
+// GET /api/admin/kyc/:id/document/:type
+// Admin kisi client ka PAN/Aadhaar image dekh sakta hai.
+// Image backend se stream hoti hai, public URL nahi hai.
+// Route par protect + adminOnly lagana zaroori hai.
+// ======================================================
+const getKycDocument = async (req, res, next) => {
+  try {
+    const type = String(req.params.type || "").toLowerCase();
+
+    if (!KYC_DOC_TYPES.includes(type)) {
+      throw new ApiError(400, "Document type must be pan or aadhaar.");
+    }
+
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      throw new ApiError(400, "Invalid client ID.");
+    }
+
+    // Sirf client accounts ke documents.
+    const client = await User.findOne({
+      _id: req.params.id,
+      role: "client",
+    }).select("_id");
+
+    if (!client) {
+      throw new ApiError(404, "Client not found.");
+    }
+
+    const doc = await KycDocument.findOne({
+      user: client._id,
+      docType: type,
+    }).select("+data contentType");
+
+    if (!doc) {
+      throw new ApiError(404, "Document not found.");
+    }
+
+    res.set({
+      "Content-Type": doc.contentType,
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Disposition": "inline",
+    });
+
+    return res.status(200).send(doc.data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ======================================================
 // Export controller functions
 // ======================================================
 module.exports = {
@@ -244,4 +349,5 @@ module.exports = {
   reviewDeposit,
   getPendingKyc,
   reviewKyc,
+  getKycDocument,
 };
