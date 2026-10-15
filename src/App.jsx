@@ -23,6 +23,7 @@ import Withdrawal from "./pages/Withdrawal";
 import NotFound from "./pages/NotFound";
 
 import Admin from "./pages/Admin";
+import Positions from "./pages/Positions";
 
 
 function Protected({ children }) {
@@ -113,7 +114,11 @@ export default function App() {
           path="/transactions"
           element={<Transactions />}
         />
-
+          <Route
+            path="/positions"
+            element={<Positions />}
+           />
+           
         <Route
           path="/reports"
           element={<Reports />}

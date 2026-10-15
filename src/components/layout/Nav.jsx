@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
@@ -17,6 +16,7 @@ import {
   Wallet,
   PlusCircle,
   MinusCircle,
+  TrendingUp,
 } from "lucide-react";
 
 import { cx, Button, Modal } from "../common";
@@ -116,12 +116,12 @@ function ProfileAvatar({ user, size = "normal" }) {
   );
 }
 
-// Main navigation links
+// Main navigation links (Transactions replaced by Positions)
 const NAV_ITEMS = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/portfolio", label: "Portfolio", icon: PieChart },
   { to: "/holdings", label: "Holdings", icon: Briefcase },
-  { to: "/transactions", label: "Transactions", icon: ArrowLeftRight },
+  { to: "/positions", label: "Positions", icon: TrendingUp },
   { to: "/reports", label: "Reports", icon: FileText },
   { to: "/notifications", label: "Notifications", icon: Bell },
 ];
@@ -388,6 +388,15 @@ export function TopHeader({ onLogout }) {
                     <span>Withdrawal</span>
                   </NavLink>
 
+                  <NavLink
+                    to="/transactions"
+                    onClick={() => setMenuOpen(false)}
+                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <ArrowLeftRight size={17} />
+                    <span>Transactions</span>
+                  </NavLink>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -413,25 +422,28 @@ export function TopHeader({ onLogout }) {
 export function MobileBottomNav({ onLogout }) {
   const [more, setMore] = useState(false);
 
+  // Bottom bar: Home, Portfolio, Holdings, Positions + More
   const main = [
     { to: "/dashboard", label: "Home", icon: Home },
     { to: "/portfolio", label: "Portfolio", icon: PieChart },
-    { to: "/transactions", label: "Transactions", icon: ArrowLeftRight },
+    { to: "/holdings", label: "Holdings", icon: Briefcase },
+    { to: "/positions", label: "Positions", icon: TrendingUp },
   ];
 
+  // "More" modal: Reports, Notifications, Funds, Deposit, Withdrawal, Transactions
   const extra = [
-    ...NAV_ITEMS.filter((item) =>
-      ["/holdings", "/reports", "/notifications"].includes(item.to)
-    ),
+    { to: "/reports", label: "Reports", icon: FileText },
+    { to: "/notifications", label: "Notifications", icon: Bell },
     { to: "/funds", label: "Funds", icon: Wallet },
     { to: "/deposit", label: "Deposit", icon: PlusCircle },
     { to: "/withdrawal", label: "Withdrawal", icon: MinusCircle },
+    { to: "/transactions", label: "Transactions", icon: ArrowLeftRight },
   ];
 
   return (
     <>
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white lg:hidden">
-        <div className="grid grid-cols-4">
+        <div className="grid grid-cols-5">
           {main.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}

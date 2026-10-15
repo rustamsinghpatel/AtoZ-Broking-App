@@ -396,6 +396,24 @@ export const getPortfolio = async () => {
   });
 };
 
+
+
+
+
+// ==================================================
+// 10B. REAL POSITIONS API
+// GET /api/positions
+// ==================================================
+
+export const getPositions = async () => {
+  const result = await apiRequest("/api/positions");
+
+  return {
+    open: result.data?.open || [],
+    closed: result.data?.closed || [],
+  };
+};
+
 // ==================================================
 // 11. REAL WALLET AND TRANSACTION APIs
 // GET /api/funds/me
