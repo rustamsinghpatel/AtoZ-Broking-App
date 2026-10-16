@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -11,7 +12,14 @@ import {
   reviewBankKyc,
 } from "../services/api";
 
-const menuItems = ["Overview", "Clients", "Deposits", "KYC", "Bank KYC"];
+const menuItems = [
+  "Overview",
+  "Clients",
+  "Deposits",
+  "KYC",
+  "Bank KYC",
+  "Positions",
+];
 
 function StatusBadge({ status }) {
   const styles = {
@@ -20,6 +28,8 @@ function StatusBadge({ status }) {
     inactive: "bg-red-50 text-red-700 border-red-200",
     approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
     rejected: "bg-red-50 text-red-700 border-red-200",
+    open: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    closed: "bg-slate-100 text-slate-700 border-slate-200",
   };
 
   const currentStatus = styles[status] ? status : "pending";
@@ -73,7 +83,13 @@ function formatAmount(amount) {
 }
 
 function formatAddress(user) {
-  return [user?.address, user?.city, user?.state, user?.postalCode, user?.country]
+  return [
+    user?.address,
+    user?.city,
+    user?.state,
+    user?.postalCode,
+    user?.country,
+  ]
     .filter(Boolean)
     .join(", ");
 }
@@ -88,6 +104,12 @@ export default function Admin() {
   const [pendingDeposits, setPendingDeposits] = useState([]);
   const [pendingKyc, setPendingKyc] = useState([]);
   const [pendingBank, setPendingBank] = useState([]);
+
+  // Positions: admin ke liye sabhi clients ka read-only data.
+  const [positions, setPositions] = useState([]);
+  const [positionFilter, setPositionFilter] = useState("open");
+  const [positionsLoading, setPositionsLoading] = useState(false);
+  const [positionsError, setPositionsError] = useState("");
 
   const [clientsLoading, setClientsLoading] = useState(false);
   const [depositsLoading, setDepositsLoading] = useState(false);
@@ -125,9 +147,7 @@ export default function Admin() {
 
       setClients(result.data?.clients || []);
     } catch (err) {
-      setClientsError(
-        err.message || "Clients load nahi ho paaye."
-      );
+      setClientsError(err.message || "Clients load nahi ho paaye.");
     } finally {
       setClientsLoading(false);
     }
@@ -163,9 +183,7 @@ export default function Admin() {
       const clientsWithKyc = await getPendingKyc();
       setPendingKyc(clientsWithKyc || []);
     } catch (err) {
-      setKycError(
-        err.message || "KYC requests load nahi ho paayi."
-      );
+      setKycError(err.message || "KYC requests load nahi ho paayi.");
     } finally {
       setKycLoading(false);
     }
@@ -179,11 +197,30 @@ export default function Admin() {
     try {
       setPendingBank((await getPendingBankKyc()) || []);
     } catch (err) {
-      setBankError(
-        err.message || "Bank KYC requests load nahi ho paayi."
-      );
+      setBankError(err.message || "Bank KYC requests load nahi ho paayi.");
     } finally {
       setBankLoading(false);
+    }
+  }, []);
+
+  // Admin-only API se sabhi clients ki positions load karo.
+  const fetchPositions = useCallback(async () => {
+    setPositionsLoading(true);
+    setPositionsError("");
+
+    try {
+      const result = await apiRequest("/api/admin/positions", {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      setPositions(result.data?.positions || []);
+    } catch (err) {
+      setPositionsError(
+        err.message || "Positions load nahi ho paayi."
+      );
+    } finally {
+      setPositionsLoading(false);
     }
   }, []);
 
@@ -206,6 +243,10 @@ export default function Admin() {
     if (activeMenu === "Bank KYC") {
       fetchPendingBank();
     }
+
+    if (activeMenu === "Positions") {
+      fetchPositions();
+    }
   }, [
     activeMenu,
     isAuthenticated,
@@ -214,6 +255,7 @@ export default function Admin() {
     fetchPendingDeposits,
     fetchPendingKyc,
     fetchPendingBank,
+    fetchPositions,
   ]);
 
   // Popup band hone ya naya document khulne par purani image memory se hatao.
@@ -260,10 +302,7 @@ export default function Admin() {
     try {
       await apiRequest(`/api/admin/clients/${client._id}/status`, {
         method: "PATCH",
-        body: JSON.stringify({
-          status: nextStatus,
-          reason,
-        }),
+        body: JSON.stringify({ status: nextStatus, reason }),
       });
 
       setSuccessMessage(
@@ -322,10 +361,7 @@ export default function Admin() {
         `/api/admin/deposits/${deposit._id}/review`,
         {
           method: "PATCH",
-          body: JSON.stringify({
-            status: nextStatus,
-            adminNote,
-          }),
+          body: JSON.stringify({ status: nextStatus, adminNote }),
         }
       );
 
@@ -336,7 +372,6 @@ export default function Admin() {
             : "Deposit reject ho gaya.")
       );
 
-      // Refresh the pending list from the backend.
       await fetchPendingDeposits();
     } catch (err) {
       setActionError(
@@ -368,7 +403,6 @@ export default function Admin() {
       const url = URL.createObjectURL(blob);
 
       setViewer((prev) => {
-        // Agar popup band ho gaya ya doosra document khul gaya, to ye image hatao.
         if (!prev || !prev.key.startsWith(requestKey)) {
           URL.revokeObjectURL(url);
           return prev;
@@ -389,7 +423,7 @@ export default function Admin() {
     }
   };
 
-  // Client ka bank proof image securely popup mein kholo. :id = user ID.
+  // Client ka bank proof image securely popup mein kholo.
   const openBankDocument = async (item) => {
     const userId = item.user?._id;
 
@@ -513,7 +547,9 @@ export default function Admin() {
       reason = entered.trim();
 
       if (!reason) {
-        setActionError("Bank KYC reject karne ke liye reason zaroori hai.");
+        setActionError(
+          "Bank KYC reject karne ke liye reason zaroori hai."
+        );
         return;
       }
 
@@ -568,6 +604,18 @@ export default function Admin() {
 
   const inactiveCount = clients.filter(
     (client) => client.status === "inactive"
+  ).length;
+
+  const filteredPositions = positions.filter(
+    (position) => position.status === positionFilter
+  );
+
+  const openPositionCount = positions.filter(
+    (position) => position.status === "open"
+  ).length;
+
+  const closedPositionCount = positions.filter(
+    (position) => position.status === "closed"
   ).length;
 
   if (!isAuthenticated) {
@@ -644,6 +692,7 @@ export default function Admin() {
               {item === "Deposits" && "₹  "}
               {item === "KYC" && "🪪  "}
               {item === "Bank KYC" && "🏦  "}
+              {item === "Positions" && "📊  "}
               {item}
             </button>
           ))}
@@ -654,7 +703,7 @@ export default function Admin() {
             Admin Workspace
           </p>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            Manage client access, review deposit requests and verify KYC and bank documents.
+            Manage client access, deposits, KYC, bank documents and view client positions.
           </p>
         </div>
 
@@ -677,7 +726,7 @@ export default function Admin() {
               {activeMenu}
             </h2>
             <p className="mt-2 text-sm text-slate-500">
-              Manage your client accounts, deposit approvals and KYC reviews.
+              Manage client accounts, review requests and view positions.
             </p>
           </div>
 
@@ -1134,8 +1183,7 @@ export default function Admin() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {pendingDeposits.map((deposit) => {
-                        const isUpdating =
-                          updatingDeposit === deposit._id;
+                        const isUpdating = updatingDeposit === deposit._id;
 
                         return (
                           <tr
@@ -1204,6 +1252,219 @@ export default function Admin() {
                                   Reject
                                 </button>
                               </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+          </section>
+        )}
+
+        {/* Positions: all clients, read-only */}
+        {activeMenu === "Positions" && (
+          <section className="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 p-5 sm:p-6">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900">
+                  All Clients' Positions
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Sabhi clients ki open aur closed positions. Ye section view-only hai.
+                </p>
+              </div>
+
+              <button
+                onClick={fetchPositions}
+                disabled={positionsLoading}
+                className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {positionsLoading ? "Refreshing…" : "↻ Refresh Positions"}
+              </button>
+            </div>
+
+            <div className="border-b border-amber-100 bg-amber-50 px-5 py-3 text-sm leading-6 text-amber-800">
+              LTP database mein saved value hai. Live market price ka connection abhi confirm nahi hai; isliye ise live market data na samjhein.
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-3">
+              <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm text-slate-500">Total Positions</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">
+                  {positionsLoading ? "…" : positions.length}
+                </p>
+              </article>
+
+              <article className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-sm text-emerald-700">Open Positions</p>
+                <p className="mt-2 text-2xl font-bold text-emerald-800">
+                  {positionsLoading ? "…" : openPositionCount}
+                </p>
+              </article>
+
+              <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm text-slate-500">Closed Positions</p>
+                <p className="mt-2 text-2xl font-bold text-slate-800">
+                  {positionsLoading ? "…" : closedPositionCount}
+                </p>
+              </article>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 px-5 pb-5">
+              <button
+                onClick={() => setPositionFilter("open")}
+                className={`rounded-lg px-4 py-2.5 text-sm font-semibold ${
+                  positionFilter === "open"
+                    ? "bg-cyan-600 text-white"
+                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                Open ({openPositionCount})
+              </button>
+
+              <button
+                onClick={() => setPositionFilter("closed")}
+                className={`rounded-lg px-4 py-2.5 text-sm font-semibold ${
+                  positionFilter === "closed"
+                    ? "bg-cyan-600 text-white"
+                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                Closed ({closedPositionCount})
+              </button>
+            </div>
+
+            {positionsLoading && (
+              <p className="px-5 pb-6 text-sm text-slate-500">
+                Positions load ho rahi hain…
+              </p>
+            )}
+
+            {!positionsLoading && positionsError && (
+              <div className="m-5 rounded-xl border border-red-200 bg-red-50 p-4">
+                <p className="font-semibold text-red-800">
+                  Positions load nahi hui.
+                </p>
+                <p className="mt-2 text-sm text-red-700">
+                  {positionsError}
+                </p>
+                <button
+                  onClick={fetchPositions}
+                  className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                >
+                  Try Again
+                </button>
+              </div>
+            )}
+
+            {!positionsLoading &&
+              !positionsError &&
+              filteredPositions.length === 0 && (
+                <div className="p-10 text-center">
+                  <div className="text-4xl" aria-hidden="true">📊</div>
+                  <h4 className="mt-3 font-semibold text-slate-800">
+                    No {positionFilter} positions found
+                  </h4>
+                  <p className="mt-2 text-sm text-slate-500">
+                    Is filter ke liye database se koi position record nahi mila.
+                  </p>
+                </div>
+              )}
+
+            {!positionsLoading &&
+              !positionsError &&
+              filteredPositions.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                    <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="whitespace-nowrap px-5 py-4">Client</th>
+                        <th className="whitespace-nowrap px-5 py-4">Symbol</th>
+                        <th className="whitespace-nowrap px-5 py-4">Side</th>
+                        <th className="whitespace-nowrap px-5 py-4">Product</th>
+                        <th className="whitespace-nowrap px-5 py-4">Quantity</th>
+                        <th className="whitespace-nowrap px-5 py-4">Average Price</th>
+                        <th className="whitespace-nowrap px-5 py-4">LTP (Saved)</th>
+                        <th className="whitespace-nowrap px-5 py-4">P&L (₹)</th>
+                        <th className="whitespace-nowrap px-5 py-4">Status</th>
+                        <th className="whitespace-nowrap px-5 py-4">Updated</th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredPositions.map((position) => {
+                        const pnl = Number(position.pnl);
+                        const validPnl = Number.isFinite(pnl);
+
+                        return (
+                          <tr
+                            key={position.id}
+                            className="align-top hover:bg-slate-50"
+                          >
+                            <td className="min-w-48 px-5 py-4">
+                              <p className="font-semibold text-cyan-700">
+                                {position.clientId || "—"}
+                              </p>
+                              <p className="mt-1 font-medium text-slate-800">
+                                {position.clientName || "Unknown client"}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {position.email || ""}
+                              </p>
+                            </td>
+
+                            <td className="whitespace-nowrap px-5 py-4 font-bold text-slate-900">
+                              {position.symbol || "—"}
+                            </td>
+
+                            <td className="whitespace-nowrap px-5 py-4">
+                              <span
+                                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                  position.side === "BUY"
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : "bg-red-50 text-red-700"
+                                }`}
+                              >
+                                {position.side || "—"}
+                              </span>
+                            </td>
+
+                            <td className="whitespace-nowrap px-5 py-4 text-slate-700">
+                              {position.product || "—"}
+                            </td>
+
+                            <td className="whitespace-nowrap px-5 py-4 text-slate-700">
+                              {Number(position.quantity || 0).toLocaleString("en-IN")}
+                            </td>
+
+                            <td className="whitespace-nowrap px-5 py-4 text-slate-700">
+                              {formatAmount(position.averagePrice)}
+                            </td>
+
+                            <td className="whitespace-nowrap px-5 py-4 text-slate-700">
+                              {formatAmount(position.ltp)}
+                            </td>
+
+                            <td
+                              className={`whitespace-nowrap px-5 py-4 font-semibold ${
+                                validPnl && pnl > 0
+                                  ? "text-emerald-700"
+                                  : validPnl && pnl < 0
+                                    ? "text-red-700"
+                                    : "text-slate-700"
+                              }`}
+                            >
+                              {validPnl ? formatAmount(pnl) : "—"}
+                            </td>
+
+                            <td className="whitespace-nowrap px-5 py-4">
+                              <StatusBadge status={position.status} />
+                            </td>
+
+                            <td className="whitespace-nowrap px-5 py-4 text-slate-600">
+                              {formatDate(position.updatedAt)}
                             </td>
                           </tr>
                         );
