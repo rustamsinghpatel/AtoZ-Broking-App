@@ -1,3 +1,6 @@
+const Position = require("../models/Position");
+
+
 const express = require("express");
 
 const {
@@ -215,5 +218,59 @@ router.patch(
   adminOnly,
   reviewBankKyc
 );
+
+
+
+/**
+ * GET /api/admin/positions
+ * Admin sabhi clients ki open aur closed positions dekh sakta hai.
+ * Admin authentication required.
+ */
+router.get("/positions", protect, adminOnly, async (req, res, next) => {
+  try {
+    const records = await Position.find()
+      .populate("user", "clientId fullName email")
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    const positions = records.map((p) => {
+      const averagePrice = Number(p.averagePrice || 0);
+      const ltp = Number(p.ltp || 0);
+      const quantity = Number(p.quantity || 0);
+
+      const pnl =
+        (ltp - averagePrice) *
+        quantity *
+        (p.side === "SELL" ? -1 : 1);
+
+      return {
+        id: p._id,
+        clientId: p.user?.clientId || "",
+        clientName: p.user?.fullName || "",
+        email: p.user?.email || "",
+        symbol: p.symbol,
+        product: p.product,
+        side: p.side,
+        quantity,
+        averagePrice,
+        ltp,
+        pnl: p.status === "open" ? pnl : Number(p.pnl || 0),
+        status: p.status,
+        buyPrice: p.buyPrice ?? null,
+        sellPrice: p.sellPrice ?? null,
+        closedAt: p.closedAt ?? null,
+        updatedAt: p.updatedAt,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: positions.length,
+      data: { positions },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 module.exports = router;

@@ -11,6 +11,7 @@ const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const adminRoutes = require("./routes/adminRoutes");
 const fundsRoutes = require("./routes/fundsRoutes");
 const positionRoutes = require("./routes/positionRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 
 // Fail early with a clear message if a required variable is missing.
 ["MONGODB_URI", "JWT_SECRET", "CLIENT_URL"].forEach((key) => {
@@ -44,6 +45,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/funds", fundsRoutes);
 app.use("/api/positions", positionRoutes);
+app.use("/api/notifications", notificationRoutes);
 // These two MUST come last.
 app.use(notFound);
 app.use(errorHandler);
