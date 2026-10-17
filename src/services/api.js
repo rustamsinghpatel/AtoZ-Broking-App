@@ -4,53 +4,46 @@
  *
  * REAL BACKEND:
  * - Authentication / current user
- * - Profile update
- * - Password change
- * - PAN / Aadhaar KYC submission and review
- * - Bank KYC submission and admin review
- * - Secure KYC document viewing
- * - Wallet balance and deposit/withdrawal history
- *
- * TEMPORARY MOCK DATA:
- * - Holdings
- * - Portfolio
- * - Reports
+ * - Profile update and password change
+ * - PAN / Aadhaar KYC
+ * - Bank KYC
+ * - Wallet balance and transaction history
+ * - Holdings and portfolio from authenticated positions API
  * - Notifications
+ *
+ * REPORT DEFINITIONS remain temporary until report APIs are implemented.
  */
 
-import { mockHoldings, mockPerformance } from "../data/mockPortfolio";
 import { mockReports } from "../data/mockTransactions";
-
 
 // ==================================================
 // 1. BACKEND URL
 // ==================================================
 
-// Set VITE_API_URL in a .env file in the project root to point at another
-// backend, e.g. VITE_API_URL=http://localhost:5000/api  (restart `npm run dev`).
-// A trailing "/api" is stripped because every endpoint below already starts with it.
 const DEFAULT_API_URL = "https://atoz-broking-app.onrender.com";
 
-export const API_URL = String(import.meta.env.VITE_API_URL || DEFAULT_API_URL)
+export const API_URL = String(
+  import.meta.env.VITE_API_URL || DEFAULT_API_URL
+)
   .trim()
   .replace(/\/+$/, "")
   .replace(/\/api$/, "");
 
 // ==================================================
 // 1B. SESSION EXPIRY
-// When the server rejects our token (expired, invalid, account removed),
-// clear the saved session and tell AuthContext so the app logs out.
 // ==================================================
 
 export const SESSION_KEY = "atoz_session";
 export const SESSION_EXPIRED_EVENT = "atoz:session-expired";
 
-// These endpoints return 401 for a wrong password, not an expired session.
 const NOT_SESSION_401 = ["/api/auth/password"];
 
 const handleUnauthorized = (status, hadToken, endpoint = "") => {
   if (status !== 401 || !hadToken) return;
-  if (NOT_SESSION_401.some((path) => endpoint.startsWith(path))) return;
+
+  if (NOT_SESSION_401.some((path) => endpoint.startsWith(path))) {
+    return;
+  }
 
   localStorage.removeItem(SESSION_KEY);
   sessionStorage.removeItem(SESSION_KEY);
@@ -94,12 +87,10 @@ export const apiRequest = async (endpoint, options = {}) => {
     response = await fetch(`${API_URL}${endpoint}`, {
       ...options,
       headers: {
-        ...(isFormData
-          ? {}
-          : { "Content-Type": "application/json" }),
-        ...(token
-          ? { Authorization: `Bearer ${token}` }
+        ...(!isFormData
+          ? { "Content-Type": "application/json" }
           : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(options.headers || {}),
       },
     });
@@ -171,35 +162,41 @@ const fetchPrivateImage = async (endpoint) => {
 };
 
 // ==================================================
-// 5. TEMPORARY MOCK API HELPER
+// 5. PORTFOLIO HOLDING MAPPER
+// Backend position fields ko UI ke expected fields mein map karta hai.
 // ==================================================
 
-const delay = (data, ms = 600) =>
-  new Promise((resolve) =>
-    setTimeout(() => resolve(structuredClone(data)), ms)
-  );
+const mapPositionToHolding = (position) => {
+  const qty = Number(position.quantity) || 0;
+  const avg = Number(position.averagePrice) || 0;
+  const price = Number(position.ltp) || 0;
 
-// ==================================================
-// 6. PORTFOLIO CALCULATION HELPER
-// ==================================================
+  const invested = qty * avg;
+  const current = qty * price;
 
-const enrich = (holding) => {
-  const invested = holding.qty * holding.avg;
-  const current = holding.qty * holding.price;
+  const pnl =
+    position.pnl != null
+      ? Number(position.pnl) || 0
+      : (current - invested) *
+        (position.side === "SELL" ? -1 : 1);
 
   return {
-    ...holding,
+    id: position.id || position._id || position.symbol,
+    name: position.symbol || "Unknown asset",
+    symbol: position.symbol || "",
+    type: "Equity",
+    qty,
+    avg,
+    price,
     invested,
     current,
-    pnl: current - invested,
-    ret: invested
-      ? ((current - invested) / invested) * 100
-      : 0,
+    pnl,
+    ret: invested ? (pnl / invested) * 100 : 0,
   };
 };
 
 // ==================================================
-// 7. AUTHENTICATION AND PROFILE APIs
+// 6. AUTHENTICATION AND PROFILE APIs
 // ==================================================
 
 // GET /api/auth/me
@@ -230,7 +227,7 @@ export const changeUserPassword = async (passwordData) => {
 };
 
 // ==================================================
-// 8. PAN / AADHAAR KYC APIs
+// 7. PAN / AADHAAR KYC APIs
 // ==================================================
 
 // GET /api/auth/kyc
@@ -305,7 +302,7 @@ export const reviewUserKyc = async (
 };
 
 // ==================================================
-// 9. BANK KYC APIs
+// 8. BANK KYC APIs
 // ==================================================
 
 // GET /api/auth/bank-kyc
@@ -378,15 +375,30 @@ export const reviewBankKyc = async (
 };
 
 // ==================================================
-// 10. TEMPORARY HOLDINGS AND PORTFOLIO APIs
-// NOTE: Ye abhi mock data use karte hain.
+// 9. REAL POSITIONS API
+// GET /api/positions
 // ==================================================
 
-export const getHoldings = async () =>
-  delay(mockHoldings.map(enrich));
+export const getPositions = async () => {
+  const result = await apiRequest("/api/positions");
+
+  return {
+    open: result.data?.open || [],
+    closed: result.data?.closed || [],
+  };
+};
+
+// ==================================================
+// 10. REAL HOLDINGS AND PORTFOLIO APIs
+// ==================================================
+
+export const getHoldings = async () => {
+  const positions = await getPositions();
+  return positions.open.map(mapPositionToHolding);
+};
 
 export const getPortfolio = async () => {
-  const holdings = mockHoldings.map(enrich);
+  const holdings = await getHoldings();
 
   const invested = holdings.reduce(
     (sum, holding) => sum + holding.invested,
@@ -398,16 +410,12 @@ export const getPortfolio = async () => {
     0
   );
 
-  const byType = holdings.reduce(
-    (map, holding) => ({
-      ...map,
-      [holding.type]:
-        (map[holding.type] || 0) + holding.current,
-    }),
-    {}
-  );
+  const byType = holdings.reduce((map, holding) => {
+    map[holding.type] = (map[holding.type] || 0) + holding.current;
+    return map;
+  }, {});
 
-  return delay({
+  return {
     summary: {
       invested,
       current,
@@ -415,33 +423,23 @@ export const getPortfolio = async () => {
       returnPct: invested
         ? ((current - invested) / invested) * 100
         : 0,
-      todayChange: Math.round(current * 0.0045),
-      todayPct: 0.45,
+      // Real daily price-change history is not available yet.
+      todayChange: 0,
+      todayPct: 0,
     },
     holdings,
-    performance: mockPerformance,
+    // Do not display fabricated historical performance.
+    performance: {
+      "1D": [],
+      "1W": [],
+      "1M": [],
+      "6M": [],
+      "1Y": [],
+    },
     allocation: Object.entries(byType).map(([name, value]) => ({
       name,
       value,
     })),
-  });
-};
-
-
-
-
-
-// ==================================================
-// 10B. REAL POSITIONS API
-// GET /api/positions
-// ==================================================
-
-export const getPositions = async () => {
-  const result = await apiRequest("/api/positions");
-
-  return {
-    open: result.data?.open || [],
-    closed: result.data?.closed || [],
   };
 };
 
@@ -456,7 +454,7 @@ export const getMyFunds = async () => {
 };
 
 // Real deposit/withdrawal history only.
-// Fake Buy/Sell entries will not be returned by this function.
+// Fake Buy/Sell entries are not returned by this function.
 
 export const getTransactions = async () => {
   const funds = await getMyFunds();
@@ -464,15 +462,17 @@ export const getTransactions = async () => {
 };
 
 // ==================================================
-// 12. TEMPORARY MOCK REPORTS
+// 12. TEMPORARY REPORT DEFINITIONS
+// Real downloadable reports need backend report endpoints.
 // ==================================================
 
 export const getReports = async () =>
-  delay(mockReports, 300);
+  structuredClone(mockReports);
 
-/* ==================================================
-   13. REAL BACKEND NOTIFICATIONS
-================================================== */
+// ==================================================
+// 13. BACKEND NOTIFICATIONS
+// These functions require matching backend routes.
+// ==================================================
 
 export const getNotifications = async () => {
   const result = await apiRequest("/api/notifications", {
@@ -481,7 +481,6 @@ export const getNotifications = async () => {
 
   return result.data || [];
 };
-
 
 export const markNotificationsRead = async (ids) => {
   const result = await apiRequest("/api/notifications/read", {
@@ -494,11 +493,11 @@ export const markNotificationsRead = async (ids) => {
   return result;
 };
 
+// ==================================================
+// 14. REAL WITHDRAWAL REQUEST
+// Saves a request; this does not itself transfer money to a bank.
+// ==================================================
 
-/**
- * POST /api/funds/withdraw
- * Client ki withdrawal request backend par save karega.
- */
 export const createWithdrawalRequest = async (amount) => {
   const response = await apiRequest("/api/funds/withdraw", {
     method: "POST",

@@ -529,14 +529,7 @@ export default function Withdrawal() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
-            <p className="text-sm font-semibold text-blue-900">
-              Demo Mode
-            </p>
-            <p className="mt-1 text-xs leading-5 text-blue-700">
-              Ye form khud se real bank transfer initiate nahi karta.
-            </p>
-          </div>
+         
         </div>
       </div>
     </div>
