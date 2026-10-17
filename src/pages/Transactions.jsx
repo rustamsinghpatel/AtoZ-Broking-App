@@ -7,6 +7,16 @@ import { getTransactions } from '../services/api'
 
 const TYPES = ['All', 'Buy', 'Sell', 'Deposit', 'Withdrawal']
 
+// Local calendar day (YYYY-MM-DD) of a date or ISO timestamp, so it can be
+// compared with the <input type="date"> values. Comparing the raw ISO string
+// ("2026-10-16T05:00:00Z") with "2026-10-16" wrongly drops same-day rows.
+const pad = (n) => String(n).padStart(2, '0')
+const localDay = (value) => {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
 function TransactionList({ transactions }) {
   const [type, setType] = useState('All')
   const [query, setQuery] = useState('')
@@ -15,7 +25,7 @@ function TransactionList({ transactions }) {
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
     return transactions.filter((t) =>
-      (type === 'All' || t.type === type) && (!from || t.date >= from) && (!to || t.date <= to) &&
+      (type === 'All' || t.type === type) && (!from || localDay(t.date) >= from) && (!to || localDay(t.date) <= to) &&
       (!q || t.asset.toLowerCase().includes(q) || t.id.toLowerCase().includes(q)))
   }, [transactions, type, query, from, to])
   return (

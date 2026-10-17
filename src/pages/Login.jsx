@@ -100,18 +100,21 @@ export default function Login() {
         <div className="absolute -bottom-32 -left-20 h-80 w-80 rounded-full bg-white/5" />
 
         <div className="relative z-10 flex items-center justify-between">
+          
           <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-sm font-bold text-green-700 shadow-lg">
-              A2Z
-            </span>
-            <div>
-              <p className="text-lg font-semibold">ATOZ Broking</p>
-              <p className="text-xs text-green-200">
-                Client Investment Portal
-              </p>
-            </div>
-          </div>
+   <img
+  src="/images/atoz-logo.jpg"
+  alt="AtoZ Broking Logo"
+  className="h-16 w-16 shrink-0 rounded-2xl object-cover"
+  />
 
+  <div>
+    <p className="text-lg font-semibold">ATOZ Broking</p>
+    <p className="text-xs text-green-200">
+      Client Investment Portal
+    </p>
+  </div>
+</div>
           <div className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs text-green-50">
             Secure Portal
           </div>
@@ -295,6 +298,19 @@ export default function Login() {
               {loading ? "Signing in…" : "Login"}
             </Button>
           </form>
+
+              <p className="mt-4 text-center text-xs leading-5 text-slate-500">
+                By using this portal, you agree to our{" "}
+            <button
+              type="button"
+              onClick={() => navigate("/terms")}
+              className="font-medium text-green-700 hover:underline"
+            >
+              Terms & Conditions
+              </button>
+              .
+               </p>
+
 
           <div className="my-7 flex items-center gap-3">
             <div className="h-px flex-1 bg-slate-200" />

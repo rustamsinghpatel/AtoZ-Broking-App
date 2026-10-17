@@ -25,6 +25,8 @@ import NotFound from "./pages/NotFound";
 import Admin from "./pages/Admin";
 import Positions from "./pages/Positions";
 
+import Terms from "./pages/Terms";
+
 
 function Protected({ children }) {
   const { isAuthenticated } = useAuth();
@@ -81,6 +83,12 @@ export default function App() {
       />
 
 
+      <Route
+        path="/terms"
+        element={<Terms />}
+      />
+
+      
       {/* =====================================================
           PROTECTED CLIENT PORTAL
       ===================================================== */}

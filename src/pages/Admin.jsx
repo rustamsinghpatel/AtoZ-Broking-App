@@ -16,6 +16,7 @@ const menuItems = [
   "Overview",
   "Clients",
   "Deposits",
+  "Withdrawals",
   "KYC",
   "Bank KYC",
   "Positions",
@@ -102,6 +103,7 @@ export default function Admin() {
 
   const [clients, setClients] = useState([]);
   const [pendingDeposits, setPendingDeposits] = useState([]);
+  const [pendingWithdrawals, setPendingWithdrawals] = useState([]);
   const [pendingKyc, setPendingKyc] = useState([]);
   const [pendingBank, setPendingBank] = useState([]);
 
@@ -113,11 +115,13 @@ export default function Admin() {
 
   const [clientsLoading, setClientsLoading] = useState(false);
   const [depositsLoading, setDepositsLoading] = useState(false);
+  const [withdrawalsLoading, setWithdrawalsLoading] = useState(false);
   const [kycLoading, setKycLoading] = useState(false);
   const [bankLoading, setBankLoading] = useState(false);
 
   const [clientsError, setClientsError] = useState("");
   const [depositsError, setDepositsError] = useState("");
+  const [withdrawalsError, setWithdrawalsError] = useState("");
   const [kycError, setKycError] = useState("");
   const [bankError, setBankError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -125,6 +129,7 @@ export default function Admin() {
 
   const [updatingClient, setUpdatingClient] = useState("");
   const [updatingDeposit, setUpdatingDeposit] = useState("");
+  const [updatingWithdrawal, setUpdatingWithdrawal] = useState("");
   const [updatingKyc, setUpdatingKyc] = useState("");
   const [updatingBank, setUpdatingBank] = useState("");
 
@@ -171,6 +176,27 @@ export default function Admin() {
       );
     } finally {
       setDepositsLoading(false);
+    }
+  }, []);
+
+  // Load pending withdrawal requests from the backend.
+  const fetchPendingWithdrawals = useCallback(async () => {
+    setWithdrawalsLoading(true);
+    setWithdrawalsError("");
+
+    try {
+      const result = await apiRequest("/api/admin/withdrawals/pending", {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      setPendingWithdrawals(result.data?.withdrawals || []);
+    } catch (err) {
+      setWithdrawalsError(
+        err.message || "Withdrawal requests load nahi ho paayi."
+      );
+    } finally {
+      setWithdrawalsLoading(false);
     }
   }, []);
 
@@ -236,6 +262,10 @@ export default function Admin() {
       fetchPendingDeposits();
     }
 
+    if (activeMenu === "Overview" || activeMenu === "Withdrawals") {
+      fetchPendingWithdrawals();
+    }
+
     if (activeMenu === "Overview" || activeMenu === "KYC") {
       fetchPendingKyc();
     }
@@ -253,6 +283,7 @@ export default function Admin() {
     user?.role,
     fetchClients,
     fetchPendingDeposits,
+    fetchPendingWithdrawals,
     fetchPendingKyc,
     fetchPendingBank,
     fetchPositions,
@@ -379,6 +410,76 @@ export default function Admin() {
       );
     } finally {
       setUpdatingDeposit("");
+    }
+  };
+
+  // Approve or reject a pending withdrawal request.
+  const handleWithdrawalReview = async (withdrawal, nextStatus) => {
+    setActionError("");
+    setSuccessMessage("");
+
+    const clientName =
+      withdrawal.user?.fullName ||
+      withdrawal.user?.clientId ||
+      "this client";
+
+    let adminNote = "";
+
+    if (nextStatus === "rejected") {
+      const enteredReason = window.prompt(
+        `Withdrawal reject karne ka reason likhein.\\nClient: ${clientName}`
+      );
+
+      if (enteredReason === null) return;
+
+      adminNote = enteredReason.trim();
+
+      if (!adminNote) {
+        setActionError(
+          "Withdrawal reject karne ke liye reason zaroori hai."
+        );
+        return;
+      }
+
+      if (adminNote.length > 300) {
+        setActionError("Reason 300 characters ya usse kam hona chahiye.");
+        return;
+      }
+    }
+
+    const confirmed = window.confirm(
+      nextStatus === "approved"
+        ? `IMPORTANT: ₹${Number(withdrawal.amount).toLocaleString("en-IN")} ka actual payout client ko bank/UPI se bhej chuke hain? Sirf payout bhejne ke baad approve karein. Approval wallet balance deduct karega.`
+        : `Kya aap ${clientName} ki ${formatAmount(withdrawal.amount)} withdrawal request reject karna chahte hain?`
+    );
+
+    if (!confirmed) return;
+
+    setUpdatingWithdrawal(withdrawal._id);
+
+    try {
+      const result = await apiRequest(
+        `/api/admin/withdrawals/${withdrawal._id}/review`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ status: nextStatus, adminNote }),
+        }
+      );
+
+      setSuccessMessage(
+        result.message ||
+          (nextStatus === "approved"
+            ? "Withdrawal approve ho gaya."
+            : "Withdrawal reject ho gaya.")
+      );
+
+      await fetchPendingWithdrawals();
+    } catch (err) {
+      setActionError(
+        err.message || "Withdrawal review complete nahi ho saka."
+      );
+    } finally {
+      setUpdatingWithdrawal("");
     }
   };
 
@@ -690,6 +791,7 @@ export default function Admin() {
               {item === "Overview" && "▦  "}
               {item === "Clients" && "👥  "}
               {item === "Deposits" && "₹  "}
+              {item === "Withdrawals" && "↗  "}
               {item === "KYC" && "🪪  "}
               {item === "Bank KYC" && "🏦  "}
               {item === "Positions" && "📊  "}
@@ -703,7 +805,7 @@ export default function Admin() {
             Admin Workspace
           </p>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            Manage client access, deposits, KYC, bank documents and view client positions.
+            Manage client access, deposits, withdrawals, KYC, bank documents and client positions.
           </p>
         </div>
 
@@ -726,7 +828,7 @@ export default function Admin() {
               {activeMenu}
             </h2>
             <p className="mt-2 text-sm text-slate-500">
-              Manage client accounts, review requests and view positions.
+              Manage client accounts, deposits, withdrawals, verification requests and positions.
             </p>
           </div>
 
@@ -757,7 +859,7 @@ export default function Admin() {
         {/* Overview */}
         {activeMenu === "Overview" && (
           <>
-            <section className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <section className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
               <StatCard
                 label="Total Clients"
                 value={clientsLoading ? "…" : clients.length}
@@ -783,6 +885,12 @@ export default function Admin() {
                 icon="₹"
               />
               <StatCard
+                label="Pending Withdrawals"
+                value={withdrawalsLoading ? "…" : pendingWithdrawals.length}
+                description="Payout requests waiting for review"
+                icon="↗"
+              />
+              <StatCard
                 label="Pending KYC"
                 value={kycLoading ? "…" : pendingKyc.length}
                 description="Documents waiting for review"
@@ -790,7 +898,7 @@ export default function Admin() {
               />
             </section>
 
-            {(clientsError || depositsError || kycError) && (
+            {(clientsError || depositsError || withdrawalsError || kycError) && (
               <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4">
                 <p className="font-semibold text-red-800">
                   Kuch dashboard data load nahi hua.
@@ -803,6 +911,11 @@ export default function Admin() {
                 {depositsError && (
                   <p className="mt-2 text-sm text-red-700">
                     Deposits: {depositsError}
+                  </p>
+                )}
+                {withdrawalsError && (
+                  <p className="mt-2 text-sm text-red-700">
+                    Withdrawals: {withdrawalsError}
                   </p>
                 )}
                 {kycError && (
@@ -869,6 +982,34 @@ export default function Admin() {
                   className="mt-4 rounded-lg bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-700"
                 >
                   Review Deposits
+                </button>
+              </article>
+
+              <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      Withdrawal Requests
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Review client payout requests.
+                    </p>
+                  </div>
+                  <span className="text-2xl" aria-hidden="true">↗</span>
+                </div>
+
+                <p className="mt-5 text-3xl font-bold text-slate-900">
+                  {withdrawalsLoading ? "…" : pendingWithdrawals.length}
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Pending requests
+                </p>
+
+                <button
+                  onClick={() => setActiveMenu("Withdrawals")}
+                  className="mt-4 rounded-lg bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-700"
+                >
+                  Review Withdrawals
                 </button>
               </article>
             </section>
@@ -1246,6 +1387,167 @@ export default function Admin() {
                                   disabled={isUpdating}
                                   onClick={() =>
                                     handleDepositReview(deposit, "rejected")
+                                  }
+                                  className="rounded-lg border border-red-200 px-3 py-2.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+          </section>
+        )}
+
+        {/* Withdrawals */}
+        {activeMenu === "Withdrawals" && (
+          <section className="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 p-5 sm:p-6">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900">
+                  Withdrawal Requests
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Verify payout details and review pending client withdrawals.
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Pending requests: {pendingWithdrawals.length}
+                </p>
+              </div>
+
+              <button
+                onClick={fetchPendingWithdrawals}
+                disabled={withdrawalsLoading}
+                className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {withdrawalsLoading ? "Refreshing…" : "Refresh Requests"}
+              </button>
+            </div>
+
+            <div className="border-b border-amber-100 bg-amber-50 px-5 py-3 text-sm leading-6 text-amber-800">
+              Approval wallet balance deduct karega, lekin app bank/UPI payout nahi bhejti. Actual payout manually verify karke hi approve karein. Reject karte waqt reason client ko notification mein dikh sakta hai.
+            </div>
+
+            {withdrawalsLoading && (
+              <p className="p-6 text-sm text-slate-500">
+                Withdrawal requests load ho rahi hain…
+              </p>
+            )}
+
+            {!withdrawalsLoading && withdrawalsError && (
+              <div className="m-5 rounded-xl border border-red-200 bg-red-50 p-4">
+                <p className="font-semibold text-red-800">
+                  Withdrawal requests load nahi hui.
+                </p>
+                <p className="mt-2 text-sm text-red-700">{withdrawalsError}</p>
+                <button
+                  onClick={fetchPendingWithdrawals}
+                  className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                >
+                  Try Again
+                </button>
+              </div>
+            )}
+
+            {!withdrawalsLoading &&
+              !withdrawalsError &&
+              pendingWithdrawals.length === 0 && (
+                <div className="p-10 text-center">
+                  <div className="text-4xl" aria-hidden="true">✓</div>
+                  <h4 className="mt-3 font-semibold text-slate-800">
+                    No pending withdrawals
+                  </h4>
+                  <p className="mt-2 text-sm text-slate-500">
+                    Client ki nayi withdrawal request yahan dikhegi.
+                  </p>
+                </div>
+              )}
+
+            {!withdrawalsLoading &&
+              !withdrawalsError &&
+              pendingWithdrawals.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                    <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-5 py-4">Client</th>
+                        <th className="px-5 py-4">Amount</th>
+                        <th className="px-5 py-4">Payout Method</th>
+                        <th className="px-5 py-4">Requested On</th>
+                        <th className="px-5 py-4">Status</th>
+                        <th className="px-5 py-4">Review Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {pendingWithdrawals.map((withdrawal) => {
+                        const isUpdating =
+                          updatingWithdrawal === withdrawal._id;
+
+                        return (
+                          <tr
+                            key={withdrawal._id}
+                            className="align-top hover:bg-slate-50"
+                          >
+                            <td className="min-w-44 px-5 py-4">
+                              <p className="font-semibold text-slate-800">
+                                {withdrawal.user?.fullName || "Unknown client"}
+                              </p>
+                              <p className="mt-1 text-xs text-cyan-700">
+                                {withdrawal.user?.clientId || "—"}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {withdrawal.user?.email || ""}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {withdrawal.user?.mobile || ""}
+                              </p>
+                            </td>
+
+                            <td className="whitespace-nowrap px-5 py-4">
+                              <p className="text-base font-bold text-slate-900">
+                                {formatAmount(withdrawal.amount)}
+                              </p>
+                            </td>
+
+                            <td className="min-w-40 px-5 py-4">
+                              <p className="font-medium text-slate-800">
+                                {withdrawal.method || "—"}
+                              </p>
+                              {withdrawal.referenceNumber && (
+                                <p className="mt-1 break-all text-xs text-slate-500">
+                                  Reference: {withdrawal.referenceNumber}
+                                </p>
+                              )}
+                            </td>
+
+                            <td className="whitespace-nowrap px-5 py-4 text-slate-600">
+                              {formatDate(withdrawal.createdAt)}
+                            </td>
+
+                            <td className="px-5 py-4">
+                              <StatusBadge status={withdrawal.status} />
+                            </td>
+
+                            <td className="min-w-48 px-5 py-4">
+                              <div className="flex flex-col gap-2">
+                                <button
+                                  disabled={isUpdating}
+                                  onClick={() =>
+                                    handleWithdrawalReview(withdrawal, "approved")
+                                  }
+                                  className="rounded-lg bg-emerald-600 px-3 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {isUpdating ? "Processing…" : "✓ Approve"}
+                                </button>
+                                <button
+                                  disabled={isUpdating}
+                                  onClick={() =>
+                                    handleWithdrawalReview(withdrawal, "rejected")
                                   }
                                   className="rounded-lg border border-red-200 px-3 py-2.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 >

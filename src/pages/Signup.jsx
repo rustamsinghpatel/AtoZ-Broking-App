@@ -20,6 +20,7 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const set = (key) => (e) => {
     setForm((previous) => ({
@@ -39,7 +40,9 @@ export default function Signup() {
 
     if (!form.email.trim()) {
       next.email = "Please enter your email.";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+    } else if (
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())
+    ) {
       next.email = "Please enter a valid email address.";
     }
 
@@ -59,6 +62,10 @@ export default function Signup() {
       next.confirmPassword = "Passwords do not match.";
     }
 
+    if (!acceptedTerms) {
+      next.terms = "Please accept the Terms & Conditions to continue.";
+    }
+
     setErrors(next);
 
     if (Object.keys(next).length > 0) {
@@ -75,6 +82,8 @@ export default function Signup() {
           fullName: form.fullName.trim(),
           email: form.email.trim().toLowerCase(),
           mobile: form.mobile.trim(),
+          termsAccepted: true,
+          termsVersion: "1.0",
         }),
       });
 
@@ -98,9 +107,10 @@ export default function Signup() {
     } catch (error) {
       console.error("Registration error:", error);
 
-      setErrors({
+      setErrors((previous) => ({
+        ...previous,
         form: error.message || "Unable to connect to server.",
-      });
+      }));
     } finally {
       setLoading(false);
     }
@@ -200,7 +210,9 @@ export default function Signup() {
             right={
               <button
                 type="button"
-                onClick={() => setShowConfirmPassword((value) => !value)}
+                onClick={() =>
+                  setShowConfirmPassword((value) => !value)
+                }
                 className="rounded p-1.5 text-slate-500 hover:text-slate-800"
                 aria-label={
                   showConfirmPassword
@@ -217,7 +229,48 @@ export default function Signup() {
             }
           />
 
-          <Button type="submit" loading={loading} className="w-full !py-3">
+          {/* Terms & Conditions acceptance */}
+          <div>
+            <label className="flex items-start gap-3 text-sm leading-6 text-slate-600">
+              <input
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(e) => {
+                  setAcceptedTerms(e.target.checked);
+                  setErrors((previous) => ({
+                    ...previous,
+                    terms: "",
+                  }));
+                }}
+                className="mt-1 h-4 w-4 shrink-0 accent-green-700"
+              />
+
+              <span>
+                I have read and agree to the{" "}
+                <Link
+                  to="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-green-700 hover:underline"
+                >
+                  Terms & Conditions
+                </Link>
+                .
+              </span>
+            </label>
+
+            {errors.terms && (
+              <p className="mt-1 text-sm text-red-600" role="alert">
+                {errors.terms}
+              </p>
+            )}
+          </div>
+
+          <Button
+            type="submit"
+            loading={loading}
+            className="w-full !py-3"
+          >
             {loading ? "Creating account…" : "Create Account"}
           </Button>
         </form>

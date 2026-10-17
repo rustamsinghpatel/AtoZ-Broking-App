@@ -24,19 +24,21 @@ import useAsync from "../../hooks/useAsync";
 import { getNotifications, getUser } from "../../services/api";
 
 // Green ATOZ logo — matching the Landing page
+
 function BrandMark({ size = "normal" }) {
   const small = size === "small";
 
   return (
-    <div
-      className={`flex shrink-0 items-center justify-center rounded-xl bg-green-700 font-bold text-white shadow-sm ${
-        small ? "h-9 w-9 text-xs" : "h-10 w-10 text-sm"
+    <img
+      src="/images/logo.jpeg"
+      alt="AtoZ Broking Logo"
+      className={`shrink-0 object-contain ${
+        small ? "h-9 w-9" : "h-10 w-10"
       }`}
-    >
-      ATOZ
-    </div>
+    />
   );
 }
+
 
 // Reusable logo for Login and other pages
 export function Logo() {
@@ -46,7 +48,7 @@ export function Logo() {
 
       <div>
         <p className="text-lg font-bold tracking-tight text-slate-900">
-          A TO Z <span className="text-green-600">Broking</span>
+          A To Z <span className="text-green-600">Broking</span>
         </p>
         <p className="text-xs text-slate-500">
           Client Investment Portal
@@ -138,7 +140,7 @@ export function Sidebar({ onLogout }) {
 
         <div>
           <h1 className="text-lg font-bold tracking-tight text-slate-900">
-            A TO Z <span className="text-green-600">Broking</span>
+            A To Z <span className="text-green-600">Broking</span>
           </h1>
           <p className="text-xs text-slate-500">Client Portal</p>
         </div>
@@ -288,7 +290,7 @@ export function TopHeader({ onLogout }) {
         <div className="flex items-center gap-3 lg:hidden">
           <BrandMark size="small" />
           <span className="font-bold text-slate-900">
-            A TO Z <span className="text-green-600">Broking</span>
+            A To Z <span className="text-green-600">Broking</span>
           </span>
         </div>
 

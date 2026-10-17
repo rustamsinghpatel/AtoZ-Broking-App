@@ -7,7 +7,7 @@ export default function useAsync(fetcher, deps = []) {
     let active = true
     fetcher()
       .then((data) => active && setState({ data, loading: false, error: null }))
-      .catch(() => active && setState({ data: null, loading: false, error: 'Something went wrong while loading data.' }))
+      .catch((err) => active && setState({ data: null, loading: false, error: err?.message || 'Something went wrong while loading data.' }))
     return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)

@@ -20,15 +20,42 @@
 
 import { mockHoldings, mockPerformance } from "../data/mockPortfolio";
 import { mockReports } from "../data/mockTransactions";
-import { mockNotifications } from "../data/mockNotifications";
+
 
 // ==================================================
 // 1. BACKEND URL
 // ==================================================
 
-const API_URL = "https://atoz-broking-app.onrender.com";
-// Local testing ke liye zarurat par:
-// const API_URL = "http://localhost:5000";
+// Set VITE_API_URL in a .env file in the project root to point at another
+// backend, e.g. VITE_API_URL=http://localhost:5000/api  (restart `npm run dev`).
+// A trailing "/api" is stripped because every endpoint below already starts with it.
+const DEFAULT_API_URL = "https://atoz-broking-app.onrender.com";
+
+export const API_URL = String(import.meta.env.VITE_API_URL || DEFAULT_API_URL)
+  .trim()
+  .replace(/\/+$/, "")
+  .replace(/\/api$/, "");
+
+// ==================================================
+// 1B. SESSION EXPIRY
+// When the server rejects our token (expired, invalid, account removed),
+// clear the saved session and tell AuthContext so the app logs out.
+// ==================================================
+
+export const SESSION_KEY = "atoz_session";
+export const SESSION_EXPIRED_EVENT = "atoz:session-expired";
+
+// These endpoints return 401 for a wrong password, not an expired session.
+const NOT_SESSION_401 = ["/api/auth/password"];
+
+const handleUnauthorized = (status, hadToken, endpoint = "") => {
+  if (status !== 401 || !hadToken) return;
+  if (NOT_SESSION_401.some((path) => endpoint.startsWith(path))) return;
+
+  localStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(SESSION_KEY);
+  window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+};
 
 // ==================================================
 // 2. GET SAVED LOGIN TOKEN
@@ -36,8 +63,8 @@ const API_URL = "https://atoz-broking-app.onrender.com";
 
 const getToken = () => {
   const session =
-    localStorage.getItem("a2z_session") ||
-    sessionStorage.getItem("a2z_session");
+    localStorage.getItem(SESSION_KEY) ||
+    sessionStorage.getItem(SESSION_KEY);
 
   if (!session) return null;
 
@@ -82,6 +109,8 @@ export const apiRequest = async (endpoint, options = {}) => {
     );
   }
 
+  handleUnauthorized(response.status, Boolean(token), endpoint);
+
   let result;
 
   try {
@@ -122,6 +151,8 @@ const fetchPrivateImage = async (endpoint) => {
       "Unable to connect to the server. Check your internet connection or backend availability."
     );
   }
+
+  handleUnauthorized(response.status, Boolean(token), endpoint);
 
   if (!response.ok) {
     let message = `Request failed (${response.status}).`;
@@ -439,38 +470,43 @@ export const getTransactions = async () => {
 export const getReports = async () =>
   delay(mockReports, 300);
 
-// ==================================================
-// 13. TEMPORARY MOCK NOTIFICATIONS
-// ==================================================
+/* ==================================================
+   13. REAL BACKEND NOTIFICATIONS
+================================================== */
 
-const READ_KEY = "aTOz_read_notifications";
+export const getNotifications = async () => {
+  const result = await apiRequest("/api/notifications", {
+    cache: "no-store",
+  });
 
-const readIds = () => {
-  try {
-    return JSON.parse(
-      localStorage.getItem(READ_KEY) || "[]"
-    );
-  } catch {
-    return [];
-  }
+  return result.data || [];
 };
 
-export const getNotifications = async () =>
-  delay(
-    mockNotifications.map((notification) => ({
-      ...notification,
-      read:
-        notification.read ||
-        readIds().includes(notification.id),
-    })),
-    300
-  );
 
 export const markNotificationsRead = async (ids) => {
-  const existingIds = readIds();
+  const result = await apiRequest("/api/notifications/read", {
+    method: "PATCH",
+    body: JSON.stringify(
+      Array.isArray(ids) ? { ids } : { all: true }
+    ),
+  });
 
-  localStorage.setItem(
-    READ_KEY,
-    JSON.stringify([...new Set([...existingIds, ...ids])])
-  );
+  return result;
+};
+
+
+/**
+ * POST /api/funds/withdraw
+ * Client ki withdrawal request backend par save karega.
+ */
+export const createWithdrawalRequest = async (amount) => {
+  const response = await apiRequest("/api/funds/withdraw", {
+    method: "POST",
+    body: JSON.stringify({
+      amount: Number(amount),
+      method: "Bank Transfer",
+    }),
+  });
+
+  return response;
 };

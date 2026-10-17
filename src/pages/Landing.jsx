@@ -1,5 +1,6 @@
 
 import { Link } from "react-router-dom";
+import { Logo } from "../components/layout/Nav";
 
 export default function Landing() {
   return (
@@ -7,15 +8,19 @@ export default function Landing() {
       {/* NAVBAR */}
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <Link to="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-700 font-bold text-white shadow-sm">
-              ATOZ
-            </div>
 
-            <div className="text-xl font-bold tracking-tight text-slate-900">
-              A TO Z <span className="text-green-600">Broking</span>
-            </div>
-          </Link>
+          
+<Link to="/" className="flex items-center gap-3">
+ <img
+  src="/images/atoz-logo.jpg"
+  alt="AtoZ Broking Logo"
+  className="h-16 w-16 shrink-0 rounded-2xl object-cover"
+/>
+  <div className="text-xl font-bold tracking-tight text-slate-900">
+    A To Z <span className="text-green-600">Broking</span>
+  </div>
+</Link>
+
 
           <nav className="hidden items-center gap-7 md:flex">
             <a href="#home" className="text-sm font-medium text-slate-600 transition hover:text-green-600">Home</a>
@@ -127,7 +132,7 @@ export default function Landing() {
             </h2>
 
             <p className="mt-5 leading-8 text-slate-600">
-              A TO Z Broking is designed to make investment management simple,
+              A To Z Broking is designed to make investment management simple,
               transparent and convenient. Track your holdings, monitor your
               portfolio and manage your financial information from one place.
             </p>
@@ -290,7 +295,7 @@ export default function Landing() {
                 </div>
 
                 <div className="text-xl font-bold text-white">
-                  A TO Z <span className="text-green-500">Broking</span>
+                  A To Z <span className="text-green-500">Broking</span>
                 </div>
               </Link>
 
@@ -324,7 +329,7 @@ export default function Landing() {
 
           <div className="mt-12 flex flex-col gap-4 border-t border-slate-800 pt-6 text-sm text-slate-500 md:flex-row md:items-center md:justify-between">
             <p>
-              © {new Date().getFullYear()} A TO Z Broking. All rights reserved.
+              © {new Date().getFullYear()} A To Z Broking. All rights reserved.
             </p>
 
             <div className="flex gap-6">

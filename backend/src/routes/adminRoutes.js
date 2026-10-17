@@ -10,13 +10,14 @@ const {
 
 const User = require("../models/User");
 const ApiError = require("../utils/ApiError");
-
 const {
   getPendingDeposits,
   reviewDeposit,
   getPendingKyc,
   reviewKyc,
   getKycDocument,
+  getPendingWithdrawals,
+  reviewWithdrawal,
 } = require("../controllers/adminController");
 
 const {
@@ -272,5 +273,21 @@ router.get("/positions", protect, adminOnly, async (req, res, next) => {
     next(error);
   }
 });
+
+// Pending withdrawals list
+router.get(
+  "/withdrawals/pending",
+  protect,
+  adminOnly,
+  getPendingWithdrawals
+);
+
+// Approve or reject a withdrawal
+router.patch(
+  "/withdrawals/:id/review",
+  protect,
+  adminOnly,
+  reviewWithdrawal
+);
 
 module.exports = router;

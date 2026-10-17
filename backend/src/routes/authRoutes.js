@@ -1,6 +1,5 @@
 
 const express = require("express");
-const multer = require("multer");
 
 const {
   register,
@@ -24,31 +23,14 @@ const { protect } = require("../middleware/authMiddleware");
 const router = express.Router();
 
 // ----------------------------------------
-// File upload configuration
-// Store uploaded images in memory.
+// File uploads: 2 MB max, JPG/PNG/WEBP only, and the file's real bytes are
+// checked (not just the browser-reported type). Errors come back as clear
+// 400 messages instead of a generic 500.
 // ----------------------------------------
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 5 * 1024 * 1024,
-    files: 2,
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = [
-      "image/jpeg",
-      "image/png",
-      "image/webp",
-    ];
-
-    if (!allowedTypes.includes(file.mimetype)) {
-      return cb(
-        new Error("Only JPG, PNG or WEBP images are allowed.")
-      );
-    }
-
-    cb(null, true);
-  },
-});
+const {
+  uploadKycImages,
+  uploadBankKycImage,
+} = require("../middleware/uploadMiddleware");
 
 // ----------------------------------------
 // Authentication
@@ -70,10 +52,7 @@ router.patch("/password", protect, changePassword);
 router.post(
   "/kyc",
   protect,
-  upload.fields([
-    { name: "pan", maxCount: 1 },
-    { name: "aadhaar", maxCount: 1 },
-  ]),
+  uploadKycImages,
   submitKyc
 );
 
@@ -92,7 +71,7 @@ router.get(
 router.post(
   "/bank-kyc",
   protect,
-  upload.single("bank"),
+  uploadBankKycImage,
   submitBankKyc
 );
 

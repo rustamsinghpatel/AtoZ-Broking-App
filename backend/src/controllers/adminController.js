@@ -3,6 +3,7 @@ const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 const KycDocument = require("../models/KycDocument");
 const ApiError = require("../utils/ApiError");
+const Notification = require("../models/Notification");
 
 const KYC_DOC_TYPES = ["pan", "aadhaar"];
 
@@ -341,6 +342,157 @@ const getKycDocument = async (req, res, next) => {
   }
 };
 
+// GET /api/admin/withdrawals/pending
+// Admin ko pending withdrawal requests dikhata hai.
+const getPendingWithdrawals = async (req, res, next) => {
+  try {
+    const withdrawals = await Transaction.find({
+      type: "withdrawal",
+      status: "pending",
+    })
+      .populate("user", "clientId fullName email mobile")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      count: withdrawals.length,
+      data: { withdrawals },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// PATCH /api/admin/withdrawals/:id/review
+// Admin withdrawal ko approve ya reject karega.
+const reviewWithdrawal = async (req, res, next) => {
+  let session;
+
+  try {
+    const { status, reason, adminNote } = req.body || {};
+    const note = String(reason || adminNote || "").trim();
+    const withdrawalId = req.params.id;
+
+    if (!["approved", "rejected"].includes(status)) {
+      throw new ApiError(
+        400,
+        "Status must be approved or rejected."
+      );
+    }
+
+    if (
+      status === "rejected" &&
+      !note
+    ) {
+      throw new ApiError(
+        400,
+        "Please provide a reason for rejecting the withdrawal."
+      );
+    }
+
+    if (!mongoose.isValidObjectId(withdrawalId)) {
+      throw new ApiError(400, "Invalid withdrawal ID.");
+    }
+
+    session = await mongoose.startSession();
+
+    let reviewedWithdrawal;
+    let clientId;
+
+    // Wallet aur transaction status ko ek atomic transaction mein update karo.
+    await session.withTransaction(async () => {
+      const withdrawal = await Transaction.findOne({
+        _id: withdrawalId,
+        type: "withdrawal",
+        status: "pending",
+      }).session(session);
+
+      if (!withdrawal) {
+        throw new ApiError(
+          404,
+          "Pending withdrawal not found. It may already be reviewed."
+        );
+      }
+
+      const user = await User.findById(withdrawal.user)
+        .session(session);
+
+      if (!user) {
+        throw new ApiError(404, "Withdrawal client not found.");
+      }
+
+      // Sirf approval par wallet balance deduct hoga.
+      if (status === "approved") {
+        const balance = Number(user.walletBalance || 0);
+
+        if (balance < withdrawal.amount) {
+          throw new ApiError(
+            400,
+            "Insufficient wallet balance to approve this withdrawal."
+          );
+        }
+
+        user.walletBalance = balance - withdrawal.amount;
+        await user.save({ session });
+      }
+
+      withdrawal.status = status;
+      withdrawal.adminNote = note;
+      withdrawal.reviewedBy = req.user._id;
+      withdrawal.reviewedAt = new Date();
+
+      await withdrawal.save({ session });
+
+      reviewedWithdrawal = {
+        id: withdrawal._id.toString(),
+        amount: withdrawal.amount,
+        method: withdrawal.method,
+        status: withdrawal.status,
+      };
+
+      clientId = user._id;
+    });
+
+    // Notification failure se successful review fail nahi hona chahiye.
+    try {
+      await Notification.create({
+        user: clientId,
+        title:
+          status === "approved"
+            ? "Withdrawal approved"
+            : "Withdrawal rejected",
+        message:
+          status === "approved"
+            ? `Your withdrawal request of ₹${reviewedWithdrawal.amount.toLocaleString("en-IN")} has been approved.`
+            : `Your withdrawal request of ₹${reviewedWithdrawal.amount.toLocaleString("en-IN")} was rejected. Reason: ${note}`,
+        type: "Transaction",
+        read: false,
+      });
+    } catch (notificationError) {
+      console.error(
+        "Withdrawal notification creation failed:",
+        notificationError
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message:
+        status === "approved"
+          ? "Withdrawal approved and wallet balance updated."
+          : "Withdrawal rejected.",
+      data: { withdrawal: reviewedWithdrawal },
+    });
+  } catch (error) {
+    next(error);
+  } finally {
+    if (session) {
+      await session.endSession();
+    }
+  }
+};
+
 // ======================================================
 // Export controller functions
 // ======================================================
@@ -350,4 +502,8 @@ module.exports = {
   getPendingKyc,
   reviewKyc,
   getKycDocument,
+
+  // Withdrawal review
+  getPendingWithdrawals,
+  reviewWithdrawal,
 };
