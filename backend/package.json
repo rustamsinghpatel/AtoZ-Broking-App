@@ -1,7 +1,7 @@
 {
   "name": "a2z-broking-backend",
   "version": "1.0.0",
-  "description": "A2Z Broking backend - Phase 1: Registration, Login and JWT authentication",
+  "description": "AtoZ Broking backend - Phase 1: Registration, Login and JWT authentication",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

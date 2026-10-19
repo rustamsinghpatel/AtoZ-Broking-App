@@ -20,7 +20,8 @@ import { mockReports } from "../data/mockTransactions";
 // 1. BACKEND URL
 // ==================================================
 
-const DEFAULT_API_URL = "https://atoz-broking-app.onrender.com";
+const DEFAULT_API_URL = "https://atoz-broking-app-9ync.onrender.com";
+
 
 export const API_URL = String(
   import.meta.env.VITE_API_URL || DEFAULT_API_URL
