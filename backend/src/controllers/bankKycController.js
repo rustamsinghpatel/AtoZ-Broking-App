@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const BankKyc = require("../models/BankKyc");
+const { recordKycEvent } = require("../utils/kycAudit");
 
 const getUserId = (req) => req.user?._id || req.user?.id;
 
@@ -83,6 +84,8 @@ const sendProof = (res, bank) => {
   res.setHeader("Content-Type", bank.proofContentType);
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Disposition", "inline");
+  res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
   return res.send(bank.proofData);
 };
 
@@ -167,6 +170,8 @@ exports.submitBankKyc = wrap(async (req, res) => {
     rejectionReason: "",
   };
 
+  const previousStatus = existing ? existing.status : "not_submitted";
+
   let bankKyc;
 
   if (existing) {
@@ -175,6 +180,16 @@ exports.submitBankKyc = wrap(async (req, res) => {
   } else {
     bankKyc = await BankKyc.create(bankData);
   }
+
+  await recordKycEvent({
+    user: userId,
+    scope: "bank",
+    action: "submitted",
+    previousStatus,
+    newStatus: "pending",
+    performedBy: userId,
+    performedByRole: "client",
+  });
 
   return res.status(201).json({
     success: true,
@@ -228,6 +243,41 @@ exports.getPendingBankKyc = wrap(async (req, res) => {
   });
 });
 
+// GET /api/admin/bank-kyc/records?status=all|pending|approved|rejected
+// Every submitted bank KYC, whatever its status (for re-opening after review).
+exports.getBankKycRecords = wrap(async (req, res) => {
+  const status = String(req.query.status || "all").toLowerCase();
+
+  if (!["all", "pending", "approved", "rejected"].includes(status)) {
+    return fail(res, 400, "Status must be all, pending, approved or rejected.");
+  }
+
+  const filter = status === "all" ? {} : { status };
+
+  const requests = await BankKyc.find(filter)
+    .populate(
+      "user",
+      "fullName clientId email mobile address city state postalCode country"
+    )
+    .populate("reviewedBy", "fullName clientId")
+    .sort({ submittedAt: -1 })
+    .limit(200)
+    .lean();
+
+  return res.json({
+    success: true,
+    data: {
+      requests: requests.map((item) => ({
+        _id: item._id,
+        user: item.user,
+        reviewedByName: item.reviewedBy?.fullName || "",
+        reviewedById: item.reviewedBy?.clientId || "",
+        ...getBankSummary(item),
+      })),
+    },
+  });
+});
+
 // GET /api/admin/bank-kyc/:id/document   (:id = user's ID)
 exports.getAdminBankKycDocument = wrap(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
@@ -241,6 +291,16 @@ exports.getAdminBankKycDocument = wrap(async (req, res) => {
   if (!bank?.proofData) {
     return fail(res, 404, "Bank proof document not found.");
   }
+
+  // Viewing is logged separately from approve / reject decisions.
+  await recordKycEvent({
+    user: req.params.id,
+    scope: "bank",
+    action: "document_viewed",
+    docType: "bank",
+    performedBy: getUserId(req),
+    performedByRole: "admin",
+  });
 
   return sendProof(res, bank);
 });
@@ -293,6 +353,17 @@ exports.reviewBankKyc = wrap(async (req, res) => {
         : "Bank KYC request not found."
     );
   }
+
+  await recordKycEvent({
+    user: req.params.id,
+    scope: "bank",
+    action: status,
+    previousStatus: "pending",
+    newStatus: status,
+    reason: status === "rejected" ? reason : "",
+    performedBy: getUserId(req),
+    performedByRole: "admin",
+  });
 
   return res.json({
     success: true,

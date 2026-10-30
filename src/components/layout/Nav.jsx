@@ -22,40 +22,14 @@ import {
 import { cx, Button, Modal } from "../common";
 import useAsync from "../../hooks/useAsync";
 import { getNotifications, getUser } from "../../services/api";
+import { Logo, LogoImage } from "../Logo";
 
-// Green ATOZ logo — matching the Landing page
+// The logo comes from the shared component (same asset as the landing page).
+// `Logo` is re-exported so existing imports from this file keep working.
+export { Logo };
 
 function BrandMark({ size = "normal" }) {
-  const small = size === "small";
-
-  return (
-    <img
-      src="/images/logo.jpeg"
-      alt="AtoZ Broking Logo"
-      className={`shrink-0 object-contain ${
-        small ? "h-9 w-9" : "h-10 w-10"
-      }`}
-    />
-  );
-}
-
-
-// Reusable logo for Login and other pages
-export function Logo() {
-  return (
-    <div className="flex items-center gap-3">
-      <BrandMark />
-
-      <div>
-        <p className="text-lg font-bold tracking-tight text-slate-900">
-          A To Z <span className="text-green-600">Broking</span>
-        </p>
-        <p className="text-xs text-slate-500">
-          Client Investment Portal
-        </p>
-      </div>
-    </div>
-  );
+  return <LogoImage size={size === "small" ? "sm" : "md"} />;
 }
 
 // Profile photo — reads the existing Profile page localStorage key

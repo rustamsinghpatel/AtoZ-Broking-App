@@ -2,6 +2,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import PositionManager from "../components/admin/PositionManager";
+import KycRecordsPanel from "../components/admin/KycRecordsPanel";
+import BankKycRecordsPanel from "../components/admin/BankKycRecordsPanel";
 import {
   apiRequest,
   getPendingKyc,
@@ -10,6 +13,7 @@ import {
   getPendingBankKyc,
   getAdminBankKycDocumentBlob,
   reviewBankKyc,
+  changeUserPassword,
 } from "../services/api";
 
 const menuItems = [
@@ -20,6 +24,7 @@ const menuItems = [
   "KYC",
   "Bank KYC",
   "Positions",
+  "Settings",
 ];
 
 function StatusBadge({ status }) {
@@ -107,11 +112,6 @@ export default function Admin() {
   const [pendingKyc, setPendingKyc] = useState([]);
   const [pendingBank, setPendingBank] = useState([]);
 
-  // Positions: admin ke liye sabhi clients ka read-only data.
-  const [positions, setPositions] = useState([]);
-  const [positionFilter, setPositionFilter] = useState("open");
-  const [positionsLoading, setPositionsLoading] = useState(false);
-  const [positionsError, setPositionsError] = useState("");
 
   const [clientsLoading, setClientsLoading] = useState(false);
   const [depositsLoading, setDepositsLoading] = useState(false);
@@ -126,6 +126,12 @@ export default function Admin() {
   const [bankError, setBankError] = useState("");
   const [actionError, setActionError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   const [updatingClient, setUpdatingClient] = useState("");
   const [updatingDeposit, setUpdatingDeposit] = useState("");
@@ -136,7 +142,7 @@ export default function Admin() {
   // KYC document popup: { title, url, loading, error } ya null.
   const [viewer, setViewer] = useState(null);
 
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user, logout, replaceToken } = useAuth();
   const navigate = useNavigate();
 
   // Load registered clients from the backend.
@@ -229,27 +235,6 @@ export default function Admin() {
     }
   }, []);
 
-  // Admin-only API se sabhi clients ki positions load karo.
-  const fetchPositions = useCallback(async () => {
-    setPositionsLoading(true);
-    setPositionsError("");
-
-    try {
-      const result = await apiRequest("/api/admin/positions", {
-        method: "GET",
-        cache: "no-store",
-      });
-
-      setPositions(result.data?.positions || []);
-    } catch (err) {
-      setPositionsError(
-        err.message || "Positions load nahi ho paayi."
-      );
-    } finally {
-      setPositionsLoading(false);
-    }
-  }, []);
-
   // Load only the data needed for the selected page.
   useEffect(() => {
     if (!isAuthenticated || user?.role !== "admin") return;
@@ -274,9 +259,6 @@ export default function Admin() {
       fetchPendingBank();
     }
 
-    if (activeMenu === "Positions") {
-      fetchPositions();
-    }
   }, [
     activeMenu,
     isAuthenticated,
@@ -286,7 +268,6 @@ export default function Admin() {
     fetchPendingWithdrawals,
     fetchPendingKyc,
     fetchPendingBank,
-    fetchPositions,
   ]);
 
   // Popup band hone ya naya document khulne par purani image memory se hatao.
@@ -509,7 +490,7 @@ export default function Admin() {
           return prev;
         }
 
-        return { ...prev, url, loading: false };
+        return { ...prev, url, type: blob.type || "", loading: false };
       });
     } catch (err) {
       setViewer((prev) => {
@@ -552,7 +533,7 @@ export default function Admin() {
           return prev;
         }
 
-        return { ...prev, url, loading: false };
+        return { ...prev, url, type: blob.type || "", loading: false };
       });
     } catch (err) {
       setViewer((prev) => {
@@ -690,6 +671,62 @@ export default function Admin() {
     }
   };
 
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    setActionError("");
+    setSuccessMessage("");
+
+    const { currentPassword, newPassword, confirmPassword } = passwordData;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setActionError("Saare password fields bharna zaroori hai.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setActionError("New password kam se kam 8 characters ka hona chahiye.");
+      return;
+    }
+    if (!/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      setActionError("Password me kam se kam ek letter aur ek number hona chahiye.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setActionError("New password aur confirm password match nahi kar rahe.");
+      return;
+    }
+    if (currentPassword === newPassword) {
+      setActionError("New password current password se alag hona chahiye.");
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      const result = await changeUserPassword({
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      });
+      const token = result.data?.token;
+      const expiresAt = result.data?.expiresAt;
+
+      if (token && typeof replaceToken === "function") {
+        replaceToken(token, expiresAt);
+      } else {
+        // Agar backend naya token na bheje, purane invalid session se logout karein.
+        logout();
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setSuccessMessage(result.message || "Admin password successfully change ho gaya.");
+    } catch (err) {
+      setActionError(err.message || "Password change nahi ho saka.");
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
   const handleLogout = () => {
     logout();
     navigate("/login", { replace: true });
@@ -705,18 +742,6 @@ export default function Admin() {
 
   const inactiveCount = clients.filter(
     (client) => client.status === "inactive"
-  ).length;
-
-  const filteredPositions = positions.filter(
-    (position) => position.status === positionFilter
-  );
-
-  const openPositionCount = positions.filter(
-    (position) => position.status === "open"
-  ).length;
-
-  const closedPositionCount = positions.filter(
-    (position) => position.status === "closed"
   ).length;
 
   if (!isAuthenticated) {
@@ -750,13 +775,25 @@ export default function Admin() {
     <div className="min-h-screen bg-slate-50 text-slate-800 md:flex">
       {/* Sidebar */}
       <aside className="w-full shrink-0 border-b border-slate-200 bg-white p-5 md:min-h-screen md:w-64 md:border-b-0 md:border-r">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-          ATOZ <span className="text-cyan-600">Broking</span>
-        </h1>
-
-        <p className="mt-2 text-xs uppercase tracking-widest text-slate-400">
-          Admin Portal
-        </p>
+        {/* AtoZ Broking brand logo */}
+        <div className="flex items-center gap-3">
+          <img
+            src="/images/atoz-logo.jpeg"
+            alt="A To Z Broking logo"
+            className="h-14 w-14 shrink-0 rounded-xl object-contain"
+            onError={(event) => {
+              event.currentTarget.style.display = "none";
+            }}
+          />
+          <div className="min-w-0">
+            <p className="truncate text-lg font-bold leading-tight text-slate-900">
+              A To Z Broking
+            </p>
+            <p className="mt-1 text-xs font-medium text-slate-500">
+              Admin Portal
+            </p>
+          </div>
+        </div>
 
         <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">
@@ -795,6 +832,7 @@ export default function Admin() {
               {item === "KYC" && "🪪  "}
               {item === "Bank KYC" && "🏦  "}
               {item === "Positions" && "📊  "}
+              {item === "Settings" && "⚙️  "}
               {item}
             </button>
           ))}
@@ -1565,218 +1603,8 @@ export default function Admin() {
           </section>
         )}
 
-        {/* Positions: all clients, read-only */}
-        {activeMenu === "Positions" && (
-          <section className="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 p-5 sm:p-6">
-              <div>
-                <h3 className="text-xl font-semibold text-slate-900">
-                  All Clients' Positions
-                </h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Sabhi clients ki open aur closed positions. Ye section view-only hai.
-                </p>
-              </div>
-
-              <button
-                onClick={fetchPositions}
-                disabled={positionsLoading}
-                className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {positionsLoading ? "Refreshing…" : "↻ Refresh Positions"}
-              </button>
-            </div>
-
-            <div className="border-b border-amber-100 bg-amber-50 px-5 py-3 text-sm leading-6 text-amber-800">
-              LTP database mein saved value hai. Live market price ka connection abhi confirm nahi hai; isliye ise live market data na samjhein.
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-3">
-              <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm text-slate-500">Total Positions</p>
-                <p className="mt-2 text-2xl font-bold text-slate-900">
-                  {positionsLoading ? "…" : positions.length}
-                </p>
-              </article>
-
-              <article className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                <p className="text-sm text-emerald-700">Open Positions</p>
-                <p className="mt-2 text-2xl font-bold text-emerald-800">
-                  {positionsLoading ? "…" : openPositionCount}
-                </p>
-              </article>
-
-              <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm text-slate-500">Closed Positions</p>
-                <p className="mt-2 text-2xl font-bold text-slate-800">
-                  {positionsLoading ? "…" : closedPositionCount}
-                </p>
-              </article>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 px-5 pb-5">
-              <button
-                onClick={() => setPositionFilter("open")}
-                className={`rounded-lg px-4 py-2.5 text-sm font-semibold ${
-                  positionFilter === "open"
-                    ? "bg-cyan-600 text-white"
-                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                Open ({openPositionCount})
-              </button>
-
-              <button
-                onClick={() => setPositionFilter("closed")}
-                className={`rounded-lg px-4 py-2.5 text-sm font-semibold ${
-                  positionFilter === "closed"
-                    ? "bg-cyan-600 text-white"
-                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                Closed ({closedPositionCount})
-              </button>
-            </div>
-
-            {positionsLoading && (
-              <p className="px-5 pb-6 text-sm text-slate-500">
-                Positions load ho rahi hain…
-              </p>
-            )}
-
-            {!positionsLoading && positionsError && (
-              <div className="m-5 rounded-xl border border-red-200 bg-red-50 p-4">
-                <p className="font-semibold text-red-800">
-                  Positions load nahi hui.
-                </p>
-                <p className="mt-2 text-sm text-red-700">
-                  {positionsError}
-                </p>
-                <button
-                  onClick={fetchPositions}
-                  className="mt-3 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
-                >
-                  Try Again
-                </button>
-              </div>
-            )}
-
-            {!positionsLoading &&
-              !positionsError &&
-              filteredPositions.length === 0 && (
-                <div className="p-10 text-center">
-                  <div className="text-4xl" aria-hidden="true">📊</div>
-                  <h4 className="mt-3 font-semibold text-slate-800">
-                    No {positionFilter} positions found
-                  </h4>
-                  <p className="mt-2 text-sm text-slate-500">
-                    Is filter ke liye database se koi position record nahi mila.
-                  </p>
-                </div>
-              )}
-
-            {!positionsLoading &&
-              !positionsError &&
-              filteredPositions.length > 0 && (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-                    <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                      <tr>
-                        <th className="whitespace-nowrap px-5 py-4">Client</th>
-                        <th className="whitespace-nowrap px-5 py-4">Symbol</th>
-                        <th className="whitespace-nowrap px-5 py-4">Side</th>
-                        <th className="whitespace-nowrap px-5 py-4">Product</th>
-                        <th className="whitespace-nowrap px-5 py-4">Quantity</th>
-                        <th className="whitespace-nowrap px-5 py-4">Average Price</th>
-                        <th className="whitespace-nowrap px-5 py-4">LTP (Saved)</th>
-                        <th className="whitespace-nowrap px-5 py-4">P&L (₹)</th>
-                        <th className="whitespace-nowrap px-5 py-4">Status</th>
-                        <th className="whitespace-nowrap px-5 py-4">Updated</th>
-                      </tr>
-                    </thead>
-
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredPositions.map((position) => {
-                        const pnl = Number(position.pnl);
-                        const validPnl = Number.isFinite(pnl);
-
-                        return (
-                          <tr
-                            key={position.id}
-                            className="align-top hover:bg-slate-50"
-                          >
-                            <td className="min-w-48 px-5 py-4">
-                              <p className="font-semibold text-cyan-700">
-                                {position.clientId || "—"}
-                              </p>
-                              <p className="mt-1 font-medium text-slate-800">
-                                {position.clientName || "Unknown client"}
-                              </p>
-                              <p className="mt-1 text-xs text-slate-500">
-                                {position.email || ""}
-                              </p>
-                            </td>
-
-                            <td className="whitespace-nowrap px-5 py-4 font-bold text-slate-900">
-                              {position.symbol || "—"}
-                            </td>
-
-                            <td className="whitespace-nowrap px-5 py-4">
-                              <span
-                                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                                  position.side === "BUY"
-                                    ? "bg-emerald-50 text-emerald-700"
-                                    : "bg-red-50 text-red-700"
-                                }`}
-                              >
-                                {position.side || "—"}
-                              </span>
-                            </td>
-
-                            <td className="whitespace-nowrap px-5 py-4 text-slate-700">
-                              {position.product || "—"}
-                            </td>
-
-                            <td className="whitespace-nowrap px-5 py-4 text-slate-700">
-                              {Number(position.quantity || 0).toLocaleString("en-IN")}
-                            </td>
-
-                            <td className="whitespace-nowrap px-5 py-4 text-slate-700">
-                              {formatAmount(position.averagePrice)}
-                            </td>
-
-                            <td className="whitespace-nowrap px-5 py-4 text-slate-700">
-                              {formatAmount(position.ltp)}
-                            </td>
-
-                            <td
-                              className={`whitespace-nowrap px-5 py-4 font-semibold ${
-                                validPnl && pnl > 0
-                                  ? "text-emerald-700"
-                                  : validPnl && pnl < 0
-                                    ? "text-red-700"
-                                    : "text-slate-700"
-                              }`}
-                            >
-                              {validPnl ? formatAmount(pnl) : "—"}
-                            </td>
-
-                            <td className="whitespace-nowrap px-5 py-4">
-                              <StatusBadge status={position.status} />
-                            </td>
-
-                            <td className="whitespace-nowrap px-5 py-4 text-slate-600">
-                              {formatDate(position.updatedAt)}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-          </section>
-        )}
+        {/* Positions: record and manage client positions (audited) */}
+        {activeMenu === "Positions" && <PositionManager />}
 
         {/* KYC (PAN + Aadhaar) */}
         {activeMenu === "KYC" && (
@@ -1959,6 +1787,11 @@ export default function Admin() {
               </div>
             )}
           </section>
+        )}
+
+        {/* KYC history: reopen reviewed documents */}
+        {activeMenu === "KYC" && (
+          <KycRecordsPanel onViewDocument={openKycDocument} />
         )}
 
         {/* Bank KYC */}
@@ -2155,6 +1988,79 @@ export default function Admin() {
             )}
           </section>
         )}
+        {activeMenu === "Bank KYC" && (
+          <BankKycRecordsPanel onViewDocument={openBankDocument} />
+        )}
+
+        {/* Admin account settings */}
+        {activeMenu === "Settings" && (
+          <section className="mt-7 max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div>
+              <h3 className="text-xl font-semibold text-slate-900">Change Admin Password</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Apne admin account ka password update karein. Security ke liye current password bhi enter karna hoga.
+              </p>
+            </div>
+
+            <form onSubmit={handlePasswordChange} className="mt-6 space-y-5">
+              <div>
+                <label htmlFor="admin-current-password" className="mb-2 block text-sm font-medium text-slate-700">Current Password</label>
+                <input
+                  id="admin-current-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={passwordData.currentPassword}
+                  onChange={(e) => setPasswordData((prev) => ({ ...prev, currentPassword: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
+                  placeholder="Current password"
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="admin-new-password" className="mb-2 block text-sm font-medium text-slate-700">New Password</label>
+                <input
+                  id="admin-new-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={passwordData.newPassword}
+                  onChange={(e) => setPasswordData((prev) => ({ ...prev, newPassword: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
+                  placeholder="At least 8 characters, with a letter and number"
+                  minLength={8}
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="admin-confirm-password" className="mb-2 block text-sm font-medium text-slate-700">Confirm New Password</label>
+                <input
+                  id="admin-confirm-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={passwordData.confirmPassword}
+                  onChange={(e) => setPasswordData((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100"
+                  placeholder="Re-enter new password"
+                  minLength={8}
+                  required
+                />
+              </div>
+
+              <div className="rounded-lg bg-slate-50 p-4 text-xs leading-5 text-slate-600">
+                Password kam se kam 8 characters ka ho aur usme ek letter aur ek number zaroor ho.
+              </div>
+
+              <button
+                type="submit"
+                disabled={passwordLoading}
+                className="rounded-lg bg-cyan-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {passwordLoading ? "Updating Password…" : "Change Password"}
+              </button>
+            </form>
+          </section>
+        )}
       </main>
 
       {/* Document popup (PAN, Aadhaar and bank proof) */}
@@ -2185,7 +2091,7 @@ export default function Admin() {
             <div className="mt-4 flex min-h-64 items-center justify-center overflow-auto rounded-xl bg-slate-50 p-2 ring-1 ring-slate-200">
               {viewer.loading && (
                 <p className="text-sm text-slate-500">
-                  Document load ho raha hai…
+                  Loading document…
                 </p>
               )}
 
@@ -2193,7 +2099,16 @@ export default function Admin() {
                 <p className="text-sm text-red-600">{viewer.error}</p>
               )}
 
-              {!viewer.loading && !viewer.error && viewer.url && (
+              {!viewer.loading && !viewer.error && viewer.url && viewer.type === "application/pdf" && (
+                <iframe
+                  src={viewer.url}
+                  title={viewer.title}
+                  sandbox=""
+                  className="h-[70vh] w-full rounded-lg bg-white"
+                />
+              )}
+
+              {!viewer.loading && !viewer.error && viewer.url && viewer.type !== "application/pdf" && (
                 <img
                   src={viewer.url}
                   alt={viewer.title}
@@ -2205,7 +2120,7 @@ export default function Admin() {
             </div>
 
             <p className="mt-3 text-xs text-slate-500">
-              Ye image sirf is popup mein dikhti hai aur band karte hi hat jaati hai.
+              This document is shown only in this popup and is removed when you close it. Opening it is recorded in the audit history.
             </p>
           </div>
         </div>

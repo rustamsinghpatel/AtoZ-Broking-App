@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Lock, Mail, Phone, User } from "lucide-react";
 import { Button, Input } from "../components/common";
+import { LogoImage } from "../components/Logo";
 import { apiRequest } from "../services/api";
 
 export default function Signup() {
@@ -121,9 +122,9 @@ export default function Signup() {
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="mb-8 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-green-700 text-sm font-bold text-white">
-            ATOZ
-          </div>
+          <Link to="/" aria-label="AtoZ Broking home" className="mx-auto block w-fit">
+            <LogoImage size="lg" />
+          </Link>
 
           <h1 className="mt-4 text-2xl font-semibold text-slate-900">
             Create your account

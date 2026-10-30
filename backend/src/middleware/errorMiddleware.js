@@ -13,6 +13,7 @@ const errorHandler = (err, req, res, next) => {
   let statusCode = err.statusCode || 500;
   let message = err.message || "Server error";
   let errors = err.errors || undefined;
+  let errorCode = err.errorCode || undefined;
 
   // Malformed JSON body
   if (err.type === "entity.parse.failed") {
@@ -24,10 +25,12 @@ const errorHandler = (err, req, res, next) => {
   if (err.name === "JsonWebTokenError") {
     statusCode = 401;
     message = "Not authorized, invalid token";
+    errorCode = "AUTH_INVALID";
   }
   if (err.name === "TokenExpiredError") {
     statusCode = 401;
     message = "Session expired, please log in again";
+    errorCode = "AUTH_EXPIRED";
   }
 
   // Duplicate key from MongoDB (e.g. two identical signups at the same moment)
@@ -52,7 +55,12 @@ const errorHandler = (err, req, res, next) => {
 
   res
     .status(statusCode)
-    .json({ success: false, message, ...(errors && { errors }) });
+    .json({
+      success: false,
+      message,
+      ...(errorCode && { code: errorCode }),
+      ...(errors && { errors }),
+    });
 };
 
 module.exports = { notFound, errorHandler };

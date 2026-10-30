@@ -1,6 +1,6 @@
 import { ArrowLeft, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Logo } from "../components/layout/Nav";
+import { Logo } from "../components/Logo";
 
 export default function Terms() {
   const navigate = useNavigate();

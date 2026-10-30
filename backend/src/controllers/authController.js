@@ -4,6 +4,31 @@ const ApiError = require("../utils/ApiError");
 const asyncHandler = require("../utils/asyncHandler");
 const generateClientId = require("../utils/generateClientId");
 const generateToken = require("../utils/generateToken");
+const { getTokenExpiry } = generateToken;
+const { recordKycEvent } = require("../utils/kycAudit");
+const { createAttemptLimiter } = require("../middleware/attemptLimiter");
+
+// Limits repeated wrong "current password" guesses on the change-password API.
+const passwordAttempts = createAttemptLimiter({
+  maxFailures: 5,
+  windowMs: 15 * 60 * 1000,
+});
+
+// New-password rules for the change-password flow.
+// bcrypt only uses the first 72 bytes, so longer passwords are rejected
+// instead of being silently truncated.
+const validateNewPassword = (password) => {
+  const value = String(password);
+
+  if (value.length < 8) return "New password must be at least 8 characters";
+  if (Buffer.byteLength(value, "utf8") > 72) {
+    return "New password must be 72 bytes or fewer";
+  }
+  if (!/[A-Za-z]/.test(value) || !/\d/.test(value)) {
+    return "New password must contain at least one letter and one number";
+  }
+  return null;
+};
 
 const {
   isValidEmail,
@@ -157,11 +182,14 @@ const login = asyncHandler(async (req, res) => {
     );
   }
 
+  const token = generateToken(user);
+
   res.status(200).json({
     success: true,
     message: "Login successful",
     data: {
-      token: generateToken(user),
+      token,
+      expiresAt: getTokenExpiry(token),
       user,
     },
   });
@@ -310,11 +338,10 @@ const changePassword = asyncHandler(async (req, res) => {
     );
   }
 
-  if (String(newPassword).length < 6) {
-    throw new ApiError(
-      400,
-      "New password must be at least 6 characters"
-    );
+  const policyError = validateNewPassword(newPassword);
+
+  if (policyError) {
+    throw new ApiError(400, policyError);
   }
 
   if (newPassword !== confirmPassword) {
@@ -328,6 +355,11 @@ const changePassword = asyncHandler(async (req, res) => {
     );
   }
 
+  const limiterKey = String(req.user._id);
+
+  // Blocks the request if too many wrong current-password guesses happened.
+  passwordAttempts.check(limiterKey);
+
   const user = await User.findById(req.user._id).select("+password");
 
   if (!user) {
@@ -338,17 +370,33 @@ const changePassword = asyncHandler(async (req, res) => {
     await user.comparePassword(String(currentPassword));
 
   if (!isCurrentPasswordValid) {
-    throw new ApiError(401, "Current password is incorrect");
+    passwordAttempts.fail(limiterKey);
+
+    // 400 (not 401) on purpose: the session itself is still valid, so the
+    // frontend must not treat this as an expired login.
+    throw new ApiError(400, "Current password is incorrect");
   }
 
+  passwordAttempts.reset(limiterKey);
+
   user.password = String(newPassword);
+  // Every token issued before this moment stops working.
+  user.passwordChangedAt = new Date();
 
   // Triggers the User model's password-hashing middleware.
   await user.save();
 
+  // The device that changed the password gets a fresh token, so this
+  // session continues while all other sessions must sign in again.
+  const token = generateToken(user);
+
   res.status(200).json({
     success: true,
-    message: "Password changed successfully. Please sign in again.",
+    message: "Password changed successfully. Other devices will need to sign in again.",
+    data: {
+      token,
+      expiresAt: getTokenExpiry(token),
+    },
   });
 });
 
@@ -410,6 +458,8 @@ const submitKyc = asyncHandler(async (req, res) => {
 
   // Browser se sirf masked PAN aur Aadhaar ke aakhri 4 digit aate hain.
   // Masked PAN ka format: 2 letters + 6 stars + 1 digit + 1 letter.
+  const previousStatus = user.kycStatus;
+
   const maskedPan = String(req.body?.kycPanMasked || "")
     .trim()
     .toUpperCase();
@@ -484,6 +534,16 @@ const submitKyc = asyncHandler(async (req, res) => {
   user.kycRejectionReason = "";
 
   await user.save();
+
+  await recordKycEvent({
+    user: user._id,
+    scope: "identity",
+    action: "submitted",
+    previousStatus,
+    newStatus: "pending",
+    performedBy: user._id,
+    performedByRole: "client",
+  });
 
   res.status(201).json({
     success: true,

@@ -12,6 +12,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const fundsRoutes = require("./routes/fundsRoutes");
 const positionRoutes = require("./routes/positionRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const { warnAboutSessionConfig } = require("./utils/sessionPolicy");
 
 // Fail early with a clear message if a required variable is missing.
 ["MONGODB_URI", "JWT_SECRET", "CLIENT_URL"].forEach((key) => {
@@ -21,6 +22,9 @@ const notificationRoutes = require("./routes/notificationRoutes");
     process.exit(1);
   }
 });
+
+// Warn at startup if JWT_EXPIRES_IN would give sessions shorter than the policy.
+warnAboutSessionConfig();
 
 const app = express();
 

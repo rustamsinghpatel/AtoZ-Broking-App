@@ -1,6 +1,7 @@
 const express = require("express");
 const Position = require("../models/Position");
 const { protect } = require("../middleware/authMiddleware");
+const { computeOpenPnl } = require("../utils/positionRules");
 
 const router = express.Router();
 
@@ -21,8 +22,9 @@ router.get("/", protect, async (req, res) => {
         quantity: p.quantity,
         averagePrice: p.averagePrice,
         ltp: p.ltp,
-        pnl:
-          (p.ltp - p.averagePrice) * p.quantity * (p.side === "SELL" ? -1 : 1),
+        pnl: computeOpenPnl(p),
+        source: p.source || "legacy",
+        updatedAt: p.updatedAt,
       }));
 
     const closed = records
@@ -31,7 +33,9 @@ router.get("/", protect, async (req, res) => {
         id: p._id,
         symbol: p.symbol,
         product: p.product,
+        side: p.side,
         quantity: p.quantity,
+        source: p.source || "legacy",
         buyPrice: p.buyPrice,
         sellPrice: p.sellPrice,
         pnl: p.pnl,

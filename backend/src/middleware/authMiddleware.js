@@ -9,7 +9,7 @@ const protect = asyncHandler(async (req, res, next) => {
   const header = req.headers.authorization;
 
   if (!header || !header.startsWith("Bearer ")) {
-    throw new ApiError(401, "Not authorized, token missing");
+    throw new ApiError(401, "Not authorized, token missing", null, "AUTH_MISSING");
   }
 
   const token = header.split(" ")[1];
@@ -20,7 +20,27 @@ const protect = asyncHandler(async (req, res, next) => {
   const user = await User.findById(decoded.id);
 
   if (!user) {
-    throw new ApiError(401, "Not authorized, user no longer exists");
+    throw new ApiError(
+      401,
+      "Not authorized, user no longer exists",
+      null,
+      "AUTH_USER_GONE"
+    );
+  }
+
+  // A password change invalidates every token issued before it
+  // (the device that changed the password receives a fresh token).
+  if (user.passwordChangedAt) {
+    const changedAtSeconds = Math.floor(user.passwordChangedAt.getTime() / 1000);
+
+    if (!decoded.iat || decoded.iat < changedAtSeconds) {
+      throw new ApiError(
+        401,
+        "Your password was changed. Please sign in again.",
+        null,
+        "AUTH_PASSWORD_CHANGED"
+      );
+    }
   }
 
   // Admin must remain able to access the admin dashboard.

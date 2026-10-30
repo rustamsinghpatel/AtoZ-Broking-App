@@ -63,6 +63,12 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
+    // Set when the password is changed; tokens issued earlier stop working.
+    passwordChangedAt: {
+      type: Date,
+      default: null,
+    },
+
     // User ka role.
     role: {
       type: String,
@@ -153,6 +159,7 @@ userSchema.methods.comparePassword = function (plainPassword) {
 userSchema.set("toJSON", {
   transform: (doc, ret) => {
     delete ret.password;
+    delete ret.passwordChangedAt;
     delete ret.__v;
     return ret;
   },

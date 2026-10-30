@@ -4,6 +4,9 @@ const User = require("../models/User");
 const KycDocument = require("../models/KycDocument");
 const ApiError = require("../utils/ApiError");
 const Notification = require("../models/Notification");
+const BankKyc = require("../models/BankKyc");
+const KycAudit = require("../models/KycAudit");
+const { recordKycEvent } = require("../utils/kycAudit");
 
 const KYC_DOC_TYPES = ["pan", "aadhaar"];
 
@@ -269,6 +272,8 @@ const reviewKyc = async (req, res, next) => {
       }
     }
 
+    const previousStatus = client.kycStatus;
+
     client.kycStatus = status;
     client.kycReviewedAt = new Date();
     client.kycReviewedBy = req.user._id;
@@ -276,6 +281,17 @@ const reviewKyc = async (req, res, next) => {
       status === "rejected" ? cleanReason : "";
 
     await client.save();
+
+    await recordKycEvent({
+      user: client._id,
+      scope: "identity",
+      action: status,
+      previousStatus,
+      newStatus: status,
+      reason: status === "rejected" ? cleanReason : "",
+      performedBy: req.user._id,
+      performedByRole: "admin",
+    });
 
     return res.status(200).json({
       success: true,
@@ -329,14 +345,152 @@ const getKycDocument = async (req, res, next) => {
       throw new ApiError(404, "Document not found.");
     }
 
+    // Viewing is logged separately from approve / reject decisions.
+    await recordKycEvent({
+      user: client._id,
+      scope: "identity",
+      action: "document_viewed",
+      docType: type,
+      performedBy: req.user._id,
+      performedByRole: "admin",
+    });
+
     res.set({
       "Content-Type": doc.contentType,
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
       "Content-Disposition": "inline",
+      "Content-Security-Policy": "default-src 'none'; sandbox",
     });
 
     return res.status(200).send(doc.data);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ======================================================
+// GET /api/admin/kyc/records?status=all|pending|approved|rejected&search=
+// Every client's PAN / Aadhaar KYC, whatever its status, so an admin can
+// reopen documents after they were approved or rejected.
+// Never returns image data or full PAN / Aadhaar numbers.
+// ======================================================
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const getKycRecords = async (req, res, next) => {
+  try {
+    const status = String(req.query.status || "all").toLowerCase();
+    const allowed = ["all", "pending", "approved", "rejected"];
+
+    if (!allowed.includes(status)) {
+      throw new ApiError(400, "Status must be all, pending, approved or rejected.");
+    }
+
+    const filter = { role: "client" };
+
+    filter.kycStatus =
+      status === "all" ? { $ne: "not_submitted" } : status;
+
+    const search = String(req.query.search || "").trim().slice(0, 60);
+
+    if (search) {
+      const rx = new RegExp(escapeRegex(search), "i");
+      filter.$or = [{ clientId: rx }, { fullName: rx }, { email: rx }];
+    }
+
+    const clients = await User.find(filter)
+      .select(
+        "_id clientId fullName email mobile kycStatus kycPanMasked kycAadhaarLast4 kycSubmittedAt kycReviewedAt kycReviewedBy kycRejectionReason"
+      )
+      .populate("kycReviewedBy", "fullName clientId")
+      .sort({ kycSubmittedAt: -1 })
+      .limit(200)
+      .lean();
+
+    const ids = clients.map((client) => client._id);
+
+    const docs = ids.length
+      ? await KycDocument.find({ user: { $in: ids } })
+          .select("user docType contentType size uploadedAt")
+          .lean()
+      : [];
+
+    const docsByUser = {};
+
+    docs.forEach((doc) => {
+      const key = String(doc.user);
+      if (!docsByUser[key]) docsByUser[key] = {};
+      docsByUser[key][doc.docType] = {
+        uploaded: true,
+        contentType: doc.contentType,
+        size: doc.size,
+        uploadedAt: doc.uploadedAt,
+      };
+    });
+
+    const result = clients.map((client) => ({
+      ...client,
+      documents: {
+        pan: { uploaded: false },
+        aadhaar: { uploaded: false },
+        ...(docsByUser[String(client._id)] || {}),
+      },
+    }));
+
+    return res.status(200).json({
+      success: true,
+      count: result.length,
+      data: { clients: result },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ======================================================
+// GET /api/admin/kyc/:id/history
+// Audit history for one client (PAN / Aadhaar and bank), newest first.
+// ======================================================
+const getKycHistory = async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      throw new ApiError(400, "Invalid client ID.");
+    }
+
+    const client = await User.findOne({
+      _id: req.params.id,
+      role: "client",
+    }).select("_id");
+
+    if (!client) {
+      throw new ApiError(404, "Client not found.");
+    }
+
+    const events = await KycAudit.find({ user: client._id })
+      .populate("performedBy", "fullName clientId role")
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      count: events.length,
+      data: {
+        events: events.map((event) => ({
+          id: event._id,
+          scope: event.scope,
+          action: event.action,
+          docType: event.docType || "",
+          previousStatus: event.previousStatus || "",
+          newStatus: event.newStatus || "",
+          reason: event.reason || "",
+          performedByName: event.performedBy?.fullName || "",
+          performedById: event.performedBy?.clientId || "",
+          performedByRole: event.performedByRole,
+          createdAt: event.createdAt,
+        })),
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -502,6 +656,8 @@ module.exports = {
   getPendingKyc,
   reviewKyc,
   getKycDocument,
+  getKycRecords,
+  getKycHistory,
 
   // Withdrawal review
   getPendingWithdrawals,

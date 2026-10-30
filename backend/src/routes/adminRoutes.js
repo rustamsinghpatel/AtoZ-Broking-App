@@ -1,6 +1,3 @@
-const Position = require("../models/Position");
-
-
 const express = require("express");
 
 const {
@@ -16,15 +13,25 @@ const {
   getPendingKyc,
   reviewKyc,
   getKycDocument,
+  getKycRecords,
+  getKycHistory,
   getPendingWithdrawals,
   reviewWithdrawal,
 } = require("../controllers/adminController");
 
 const {
   getPendingBankKyc,
+  getBankKycRecords,
   getAdminBankKycDocument,
   reviewBankKyc,
 } = require("../controllers/bankKycController");
+
+const {
+  listPositions,
+  createPosition,
+  updatePosition,
+  getPositionAudit,
+} = require("../controllers/adminPositionController");
 
 const router = express.Router();
 
@@ -164,6 +171,29 @@ router.get(
 );
 
 // ==================================================
+// GET /api/admin/kyc/records?status=all|pending|approved|rejected
+// All PAN / Aadhaar KYC records, including already reviewed ones.
+// Viewing a document never changes its status.
+// ==================================================
+router.get(
+  "/kyc/records",
+  protect,
+  adminOnly,
+  getKycRecords
+);
+
+// ==================================================
+// GET /api/admin/kyc/:id/history
+// Audit history (submissions, decisions, document views) for a client.
+// ==================================================
+router.get(
+  "/kyc/:id/history",
+  protect,
+  adminOnly,
+  getKycHistory
+);
+
+// ==================================================
 // GET /api/admin/kyc/:id/document/:type
 // Admin client ka PAN/Aadhaar image securely dekh sakta hai.
 // type = pan ya aadhaar. Sirf admin, public URL nahi.
@@ -198,6 +228,17 @@ router.get(
 );
 
 // ==================================================
+// GET /api/admin/bank-kyc/records?status=all|pending|approved|rejected
+// All bank KYC records, including already reviewed ones.
+// ==================================================
+router.get(
+  "/bank-kyc/records",
+  protect,
+  adminOnly,
+  getBankKycRecords
+);
+
+// ==================================================
 // GET /api/admin/bank-kyc/:id/document
 // Admin client ka bank proof securely dekh sakta hai.
 // :id = user ID. Sirf admin, public URL nahi.
@@ -222,57 +263,17 @@ router.patch(
 
 
 
-/**
- * GET /api/admin/positions
- * Admin sabhi clients ki open aur closed positions dekh sakta hai.
- * Admin authentication required.
- */
-router.get("/positions", protect, adminOnly, async (req, res, next) => {
-  try {
-    const records = await Position.find()
-      .populate("user", "clientId fullName email")
-      .sort({ updatedAt: -1 })
-      .lean();
-
-    const positions = records.map((p) => {
-      const averagePrice = Number(p.averagePrice || 0);
-      const ltp = Number(p.ltp || 0);
-      const quantity = Number(p.quantity || 0);
-
-      const pnl =
-        (ltp - averagePrice) *
-        quantity *
-        (p.side === "SELL" ? -1 : 1);
-
-      return {
-        id: p._id,
-        clientId: p.user?.clientId || "",
-        clientName: p.user?.fullName || "",
-        email: p.user?.email || "",
-        symbol: p.symbol,
-        product: p.product,
-        side: p.side,
-        quantity,
-        averagePrice,
-        ltp,
-        pnl: p.status === "open" ? pnl : Number(p.pnl || 0),
-        status: p.status,
-        buyPrice: p.buyPrice ?? null,
-        sellPrice: p.sellPrice ?? null,
-        closedAt: p.closedAt ?? null,
-        updatedAt: p.updatedAt,
-      };
-    });
-
-    return res.status(200).json({
-      success: true,
-      count: positions.length,
-      data: { positions },
-    });
-  } catch (error) {
-    next(error);
-  }
-});
+// ==================================================
+// Positions (admin)
+// GET   /api/admin/positions            all clients' positions
+// POST  /api/admin/positions            record a position for a client
+// PATCH /api/admin/positions/:id        edit an open position (with reason)
+// GET   /api/admin/positions/:id/audit  who changed what, and when
+// ==================================================
+router.get("/positions", protect, adminOnly, listPositions);
+router.post("/positions", protect, adminOnly, createPosition);
+router.patch("/positions/:id", protect, adminOnly, updatePosition);
+router.get("/positions/:id/audit", protect, adminOnly, getPositionAudit);
 
 // Pending withdrawals list
 router.get(

@@ -37,7 +37,9 @@ import {
 } from "../components/profile/ProfileSection";
 
 import useAsync from "../hooks/useAsync";
+import { useAuth } from "../context/AuthContext";
 import {
+  changeUserPassword,
   getUser,
   updateUserProfile,
   getMyKyc,
@@ -48,56 +50,103 @@ import {
   submitBankKyc,
 } from "../services/api";
 
+const EMPTY_PASSWORD_FORM = { current: "", next: "", confirm: "" };
+
+// Same rules the backend enforces (the backend is the real authority).
+const validatePasswordForm = (f) => {
+  const errors = {};
+
+  if (!f.current) {
+    errors.current = "Enter your current password.";
+  }
+
+  if (f.next.length < 8) {
+    errors.next = "New password must be at least 8 characters.";
+  } else if (!/[A-Za-z]/.test(f.next) || !/\d/.test(f.next)) {
+    errors.next = "Use at least one letter and one number.";
+  } else if (new TextEncoder().encode(f.next).length > 72) {
+    errors.next = "New password is too long (72 bytes maximum).";
+  } else if (f.current && f.next === f.current) {
+    errors.next = "New password must be different from the current one.";
+  }
+
+  if (f.confirm !== f.next) {
+    errors.confirm = "Passwords do not match.";
+  }
+
+  return errors;
+};
+
 function PasswordModal({ open, onClose }) {
   const toast = useToast();
+  const { replaceToken } = useAuth();
 
-  const [f, setF] = useState({
-    current: "",
-    next: "",
-    confirm: "",
-  });
-
+  const [f, setF] = useState(EMPTY_PASSWORD_FORM);
   const [err, setErr] = useState({});
+  const [formError, setFormError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [show, setShow] = useState(false);
+
+  const reset = () => {
+    setF(EMPTY_PASSWORD_FORM);
+    setErr({});
+    setFormError("");
+    setShow(false);
+  };
 
   const close = () => {
-    setF({ current: "", next: "", confirm: "" });
-    setErr({});
+    if (saving) return;
+    reset();
     onClose();
   };
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
 
-    const errors = {};
+    // Ignore a second click / Enter while the request is running.
+    if (saving) return;
 
-    if (!f.current) {
-      errors.current = "Enter your current password.";
-    }
-
-    if (f.next.length < 6) {
-      errors.next =
-        "New password must be at least 6 characters.";
-    }
-
-    if (f.confirm !== f.next) {
-      errors.confirm = "Passwords do not match.";
-    }
+    const errors = validatePasswordForm(f);
 
     setErr(errors);
+    setFormError("");
 
     if (Object.keys(errors).length) return;
 
-    close();
-    toast("Password updated (demo only).");
+    setSaving(true);
+
+    try {
+      const result = await changeUserPassword({
+        currentPassword: f.current,
+        newPassword: f.next,
+        confirmPassword: f.confirm,
+      });
+
+      // This device keeps its login with a fresh token; other devices must
+      // sign in again with the new password.
+      if (result?.data?.token) {
+        replaceToken(result.data.token, result.data.expiresAt || null);
+      }
+
+      reset();
+      onClose();
+      toast("Password changed successfully.");
+    } catch (error) {
+      setFormError(error.message || "Unable to change password.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const field = (key, label) => (
+  const field = (key, label, autoComplete) => (
     <Input
       id={`pw-${key}`}
       label={label}
-      type="password"
+      type={show ? "text" : "password"}
+      autoComplete={autoComplete}
       value={f[key]}
       error={err[key]}
+      disabled={saving}
       onChange={(e) =>
         setF({ ...f, [key]: e.target.value })
       }
@@ -115,20 +164,45 @@ function PasswordModal({ open, onClose }) {
         className="space-y-3"
         noValidate
       >
-        {field("current", "Current password")}
-        {field("next", "New password")}
-        {field("confirm", "Confirm new password")}
+        {formError && (
+          <div
+            role="alert"
+            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+          >
+            {formError}
+          </div>
+        )}
+
+        {field("current", "Current password", "current-password")}
+        {field("next", "New password", "new-password")}
+        {field("confirm", "Confirm new password", "new-password")}
+
+        <p className="text-xs text-slate-500">
+          At least 8 characters, with a letter and a number.
+        </p>
+
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={show}
+            onChange={(e) => setShow(e.target.checked)}
+          />
+          Show passwords
+        </label>
 
         <div className="flex justify-end gap-2 pt-2">
           <Button
             type="button"
             variant="outline"
             onClick={close}
+            disabled={saving}
           >
             Cancel
           </Button>
 
-          <Button type="submit">Update</Button>
+          <Button type="submit" loading={saving}>
+            Update password
+          </Button>
         </div>
       </form>
     </Modal>

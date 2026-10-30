@@ -13,11 +13,11 @@ import {
   User,
 } from "lucide-react";
 import { Button, Input } from "../components/common";
-import { Logo } from "../components/layout/Nav";
+import { Logo } from "../components/Logo";
 import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, sessionNotice } = useAuth();
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -101,20 +101,7 @@ export default function Login() {
 
         <div className="relative z-10 flex items-center justify-between">
           
-          <div className="flex items-center gap-3">
-   <img
-  src="/images/atoz-logo.jpg"
-  alt="AtoZ Broking Logo"
-  className="h-16 w-16 shrink-0 rounded-2xl object-cover"
-  />
-
-  <div>
-    <p className="text-lg font-semibold">ATOZ Broking</p>
-    <p className="text-xs text-green-200">
-      Client Investment Portal
-    </p>
-  </div>
-</div>
+          <Logo size="lg" dark />
           <div className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs text-green-50">
             Secure Portal
           </div>
@@ -228,6 +215,15 @@ export default function Login() {
           </div>
 
           <form onSubmit={submit} noValidate className="mt-8 space-y-4">
+            {sessionNotice && !errors.form && (
+              <div
+                role="status"
+                className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+              >
+                {sessionNotice}
+              </div>
+            )}
+
             {errors.form && (
               <div
                 role="alert"

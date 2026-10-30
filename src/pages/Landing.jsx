@@ -1,32 +1,34 @@
 
 import { Link } from "react-router-dom";
-import { Logo } from "../components/layout/Nav";
+
+import { Logo } from "../components/Logo";
+
+import Footer from "../components/layout/Footer";
 
 export default function Landing() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
       {/* NAVBAR */}
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-
-          
-<Link to="/" className="flex items-center gap-3">
- <img
-  src="/images/atoz-logo.jpg"
-  alt="AtoZ Broking Logo"
-  className="h-16 w-16 shrink-0 rounded-2xl object-cover"
-/>
-  <div className="text-xl font-bold tracking-tight text-slate-900">
-    A To Z <span className="text-green-600">Broking</span>
-  </div>
-</Link>
-
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-3 sm:px-6 sm:py-4">
+          <Logo to="/" size="responsive" subtitle={null} />
 
           <nav className="hidden items-center gap-7 md:flex">
-            <a href="#home" className="text-sm font-medium text-slate-600 transition hover:text-green-600">Home</a>
-            <a href="#about" className="text-sm font-medium text-slate-600 transition hover:text-green-600">About</a>
-            <a href="#services" className="text-sm font-medium text-slate-600 transition hover:text-green-600">Services</a>
-            <a href="#support" className="text-sm font-medium text-slate-600 transition hover:text-green-600">Support</a>
+            <a href="#home" className="text-sm font-medium text-slate-600 transition hover:text-green-600">
+              Home
+            </a>
+
+            <a href="#about" className="text-sm font-medium text-slate-600 transition hover:text-green-600">
+              About
+            </a>
+
+            <a href="#services" className="text-sm font-medium text-slate-600 transition hover:text-green-600">
+              Services
+            </a>
+
+            <a href="#support" className="text-sm font-medium text-slate-600 transition hover:text-green-600">
+              Support
+            </a>
 
             <Link to="/login" className="text-sm font-semibold text-slate-700 transition hover:text-green-600">
               Login
@@ -37,11 +39,19 @@ export default function Landing() {
             </Link>
           </nav>
 
-          <div className="flex items-center gap-2 md:hidden">
-            <Link to="/login" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">
+          {/* Mobile Navigation */}
+          <div className="flex shrink-0 items-center gap-1.5 md:hidden">
+            <Link
+              to="/login"
+              className="whitespace-nowrap rounded-lg border border-slate-300 px-2.5 py-2 text-xs font-semibold text-slate-700 sm:px-3 sm:text-sm"
+            >
               Login
             </Link>
-            <Link to="/signup" className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white">
+
+            <Link
+              to="/signup"
+              className="whitespace-nowrap rounded-lg bg-green-600 px-2.5 py-2 text-xs font-semibold text-white sm:px-3 sm:text-sm"
+            >
               Sign Up
             </Link>
           </div>
@@ -162,9 +172,11 @@ export default function Landing() {
                 <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 text-xl">
                   📊
                 </div>
+
                 <h3 className="mt-5 text-xl font-bold text-slate-900">
                   Portfolio Tracking
                 </h3>
+
                 <p className="mt-3 leading-7 text-slate-600">
                   Keep track of your investments and portfolio performance
                   from a single dashboard.
@@ -175,9 +187,11 @@ export default function Landing() {
                 <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 text-xl">
                   💼
                 </div>
+
                 <h3 className="mt-5 text-xl font-bold text-slate-900">
                   Holdings Management
                 </h3>
+
                 <p className="mt-3 leading-7 text-slate-600">
                   View and manage your investment holdings with an easy-to-use
                   interface.
@@ -188,9 +202,11 @@ export default function Landing() {
                 <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 text-xl">
                   📈
                 </div>
+
                 <h3 className="mt-5 text-xl font-bold text-slate-900">
                   Reports &amp; Insights
                 </h3>
+
                 <p className="mt-3 leading-7 text-slate-600">
                   Access useful reports and information to better understand
                   your investment activity.
@@ -224,9 +240,11 @@ export default function Landing() {
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-xl">
                   📞
                 </div>
+
                 <h3 className="mt-4 font-bold text-slate-900">
                   Phone Support
                 </h3>
+
                 <a
                   href="tel:+918989712384"
                   className="mt-2 inline-block text-slate-600 transition hover:text-green-600"
@@ -240,9 +258,11 @@ export default function Landing() {
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-xl">
                   ✉️
                 </div>
+
                 <h3 className="mt-4 font-bold text-slate-900">
                   Email Support
                 </h3>
+
                 <p className="mt-2 text-slate-600">
                   support@atozbroking.com
                 </p>
@@ -253,9 +273,11 @@ export default function Landing() {
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-xl">
                   🕐
                 </div>
+
                 <h3 className="mt-4 font-bold text-slate-900">
                   Support Hours
                 </h3>
+
                 <p className="mt-2 text-slate-600">
                   Mon – Sat
                   <br />
@@ -285,64 +307,7 @@ export default function Landing() {
       </main>
 
       {/* FOOTER */}
-      <footer className="bg-slate-950 text-slate-300">
-        <div className="mx-auto max-w-7xl px-6 py-14">
-          <div className="grid gap-10 md:grid-cols-4">
-            <div className="md:col-span-2">
-              <Link to="/" className="inline-flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-700 font-bold text-white">
-                  ATOZ
-                </div>
-
-                <div className="text-xl font-bold text-white">
-                  A To Z <span className="text-green-500">Broking</span>
-                </div>
-              </Link>
-
-              <p className="mt-5 max-w-md leading-7 text-slate-400">
-                A simple platform designed to help you manage your investments,
-                track your portfolio and stay informed about your financial
-                journey.
-              </p>
-            </div>
-
-            {/* Quick Links */}
-            <div>
-              <h3 className="font-semibold text-white">Quick Links</h3>
-              <ul className="mt-4 space-y-3 text-sm">
-                <li><a href="#home" className="transition hover:text-green-500">Home</a></li>
-                <li><a href="#about" className="transition hover:text-green-500">About</a></li>
-                <li><a href="#services" className="transition hover:text-green-500">Services</a></li>
-                <li><a href="#support" className="transition hover:text-green-500">Support</a></li>
-              </ul>
-            </div>
-
-            {/* Account */}
-            <div>
-              <h3 className="font-semibold text-white">Account</h3>
-              <ul className="mt-4 space-y-3 text-sm">
-                <li><Link to="/login" className="transition hover:text-green-500">Login</Link></li>
-                <li><Link to="/signup" className="transition hover:text-green-500">Create Account</Link></li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="mt-12 flex flex-col gap-4 border-t border-slate-800 pt-6 text-sm text-slate-500 md:flex-row md:items-center md:justify-between">
-            <p>
-              © {new Date().getFullYear()} A To Z Broking. All rights reserved.
-            </p>
-
-            <div className="flex gap-6">
-              <a href="#support" className="transition hover:text-green-500">
-                Privacy Policy
-              </a>
-              <a href="#support" className="transition hover:text-green-500">
-                Terms &amp; Conditions
-              </a>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }
