@@ -295,6 +295,22 @@ export default function Login() {
             </Button>
           </form>
 
+                    {/* A To Z Broker Registration Details */}
+          <div className="mt-4 text-center text-xs leading-5 text-slate-500">
+            <p>
+              <span className="font-semibold text-slate-700">
+                A To Z Broker Registration No.:
+              </span>{" "}
+              INB011290633
+            </p>
+            <p>
+              <span className="font-semibold text-slate-700">
+                CIN:
+              </span>{" "}
+              U65910HR2007PTC038696
+            </p>
+          </div>
+
               <p className="mt-4 text-center text-xs leading-5 text-slate-500">
                 By using this portal, you agree to our{" "}
             <button
